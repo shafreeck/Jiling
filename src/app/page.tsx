@@ -3,141 +3,237 @@
 import { useEffect, useRef, useState } from "react";
 import { SmartOrb } from "@/components/SmartOrb";
 import { GeminiLiveClient } from "@/lib/gemini-live";
-import { invoke } from "@tauri-apps/api/core";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Terminal, Mic, MicOff, Settings } from "lucide-react";
 
+// 官方 GitHub 风格的流式播放器
+class AudioStreamer {
+  private context: AudioContext;
+  private nextPlayTime: number = 0;
+  private activeSources: Set<AudioBufferSourceNode> = new Set();
+
+  constructor(context: AudioContext) {
+    this.context = context;
+  }
+
+  addChunk(base64: string) {
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+
+    const pcm16 = new Int16Array(bytes.buffer);
+    const float32 = new Float32Array(pcm16.length);
+    for (let i = 0; i < pcm16.length; i++) float32[i] = pcm16[i] / 32768.0;
+
+    const buffer = this.context.createBuffer(1, float32.length, 24000);
+    buffer.getChannelData(0).set(float32);
+
+    const source = this.context.createBufferSource();
+    source.buffer = buffer;
+    source.connect(this.context.destination);
+
+    const now = this.context.currentTime;
+    if (this.nextPlayTime < now) {
+      this.nextPlayTime = now + 0.1; // 100ms 初始缓冲
+    }
+
+    source.start(this.nextPlayTime);
+    this.nextPlayTime += buffer.duration;
+
+    this.activeSources.add(source);
+    source.onended = () => {
+      this.activeSources.delete(source);
+    };
+  }
+
+  stopAll() {
+    this.activeSources.forEach(s => {
+      try { s.stop(); } catch (e) {}
+    });
+    this.activeSources.clear();
+    this.nextPlayTime = 0;
+  }
+}
+
+// 全局单例
+let globalClient: GeminiLiveClient | null = null;
+let globalStreamer: AudioStreamer | null = null;
+let globalContext: AudioContext | null = null;
+let globalProcessor: ScriptProcessorNode | null = null;
+
 export default function JilingPage() {
-  const [status, setStatus] = useState<"idle" | "listening" | "thinking" | "speaking">("idle");
+  const [status, _setStatus] = useState<"idle" | "listening" | "thinking" | "speaking">("idle");
   const [logs, setLogs] = useState<string[]>(["系统就绪，等待语音指令..."]);
   const [volume, setVolume] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
   
-  const clientRef = useRef<GeminiLiveClient | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const statusRef = useRef<string>("idle");
+  const logEndRef = useRef<HTMLDivElement>(null);
+
+  const setStatus = (s: "idle" | "listening" | "thinking" | "speaking" | ((prev: any) => "idle" | "listening" | "thinking" | "speaking")) => {
+    if (typeof s === "function") {
+      _setStatus((prev: any) => {
+        const next = s(prev);
+        statusRef.current = next;
+        return next;
+      });
+    } else {
+      _setStatus(s);
+      statusRef.current = s;
+    }
+  };
 
   const addLog = (msg: string) => {
     setLogs(prev => [...prev.slice(-50), `[${new Date().toLocaleTimeString()}] ${msg}`]);
   };
 
   const startInteraction = async () => {
-    try {
-      const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-      if (!apiKey) {
-        addLog("错误: 未配置 NEXT_PUBLIC_GEMINI_API_KEY");
-        return;
-      }
+    if (isStarting) return;
+    setIsStarting(true);
 
-      clientRef.current = new GeminiLiveClient({ apiKey });
-      await clientRef.current.connect();
+    try {
+      // 清理
+      if (globalClient) globalClient.disconnect();
+      if (globalProcessor) globalProcessor.disconnect();
+      if (globalStreamer) globalStreamer.stopAll();
+      if (globalContext) await globalContext.close().catch(() => {});
+      
+      globalContext = new AudioContext({ sampleRate: 24000 });
+      globalStreamer = new AudioStreamer(globalContext);
+
+      globalClient = new GeminiLiveClient(
+        (msg) => handleGeminiMessage(msg),
+        (err) => addLog(`错误: ${err}`),
+        (log) => addLog(log)
+      );
+
+      await globalClient.connect();
+      globalClient.sendInterruption(); 
       setIsConnected(true);
       setStatus("listening");
-      addLog("已连接至 Gemini Live API");
+      setIsStarting(false);
 
-      // 初始化音频采集
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      audioContextRef.current = new AudioContext({ sampleRate: 16000 });
-      const source = audioContextRef.current.createMediaStreamSource(stream);
-      
-      // 注意: 实际生产建议使用 AudioWorklet，这里为了快速演示使用 ScriptProcessor
-      const processor = audioContextRef.current.createScriptProcessor(2048, 1, 1);
-      processorRef.current = processor;
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 16000 } 
+      });
+      const source = globalContext.createMediaStreamSource(stream);
+      const processor = globalContext.createScriptProcessor(1024, 1, 1); // 文档建议的小切片
+      globalProcessor = processor;
 
       processor.onaudioprocess = (e) => {
         const inputData = e.inputBuffer.getChannelData(0);
         
-        // 计算音量用于 UI
         let sum = 0;
-        for (let i = 0; i < inputData.length; i++) {
-          sum += inputData[i] * inputData[i];
-        }
+        for (let i = 0; i < inputData.length; i++) sum += inputData[i] * inputData[i];
         setVolume(Math.sqrt(sum / inputData.length));
 
-        // 转换为 16-bit PCM Base64
-        const pcm16 = new Int16Array(inputData.length);
-        for (let i = 0; i < inputData.length; i++) {
-          pcm16[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
+        // 如果在说话，静音采集发送
+        if (statusRef.current === "speaking" || statusRef.current === "thinking") return;
+
+        const pcm16 = new Int16Array(Math.floor(inputData.length * 16000 / 24000));
+        for (let i = 0, j = 0; i < inputData.length && j < pcm16.length; i += 1.5, j++) {
+          pcm16[j] = inputData[Math.floor(i)] * 0x7FFF;
         }
-        const base64 = btoa(String.fromCharCode(...new Uint8Array(pcm16.buffer)));
-        clientRef.current?.sendAudio(base64);
+        
+        const bytes = new Uint8Array(pcm16.buffer);
+        let binary = "";
+        for (let i = 0; i < bytes.length; i += 8192) {
+          binary += String.fromCharCode.apply(null, bytes.slice(i, i + 8192) as unknown as number[]);
+        }
+        globalClient?.sendAudio(btoa(binary));
       };
 
       source.connect(processor);
-      processor.connect(audioContextRef.current.destination);
-
-      // 处理接收到的消息
-      clientRef.current.onMessage(async (msg) => {
-        if (msg.server_content?.model_turn?.parts) {
-          const part = msg.server_content.model_turn.parts[0];
-          if (part.inline_data) {
-            setStatus("speaking");
-            // 播放来自 AI 的音频 (简化处理)
-            playPcmBase64(part.inline_data.data);
-          }
-        }
-
-        if (msg.server_content?.tool_call) {
-          const calls = msg.server_content.tool_call.function_calls;
-          for (const call of calls) {
-            if (call.name === "execute_agent") {
-              setStatus("thinking");
-              addLog(`正在执行 Agent [${call.args.agent}]: ${call.args.task}`);
-              try {
-                const result = await invoke("execute_agent", { 
-                  agent: call.args.agent, 
-                  task: call.args.task 
-                });
-                addLog(`Agent 执行成功: ${result}`);
-                clientRef.current?.sendToolResponse(call.id, result);
-              } catch (err) {
-                addLog(`Agent 执行失败: ${err}`);
-                clientRef.current?.sendToolResponse(call.id, `Error: ${err}`);
-              }
-            }
-          }
-        }
-      });
+      processor.connect(globalContext.destination);
 
     } catch (err) {
-      addLog(`连接失败: ${err}`);
+      addLog(`失败: ${err}`);
+      setIsStarting(false);
     }
   };
 
-  const playPcmBase64 = (base64: string) => {
-    // 实际项目中需要更好的音频队列管理，防止爆音
-    if (!audioContextRef.current) return;
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    const pcm16 = new Int16Array(bytes.buffer);
-    const float32 = new Float32Array(pcm16.length);
-    for (let i = 0; i < pcm16.length; i++) float32[i] = pcm16[i] / 0x7FFF;
+  const handleGeminiMessage = (msg: any) => {
+    if (msg.serverContent) {
+      const serverContent = msg.serverContent;
+      
+      if (serverContent.modelTurn?.parts) {
+        for (const part of serverContent.modelTurn.parts) {
+          if (part.inlineData) {
+            setStatus("speaking");
+            globalStreamer?.addChunk(part.inlineData.data);
+          }
+        }
+      }
 
-    const buffer = audioContextRef.current.createBuffer(1, float32.length, 16000);
-    buffer.getChannelData(0).set(float32);
-    const source = audioContextRef.current.createBufferSource();
-    source.buffer = buffer;
-    source.connect(audioContextRef.current.destination);
-    source.start();
-    source.onended = () => setStatus("listening");
+      if (serverContent.turnComplete) {
+        addLog("AI 回答完毕，等待用户...");
+        setStatus("listening");
+      }
+
+      if (serverContent.interrupted) {
+        addLog("AI 被用户打断");
+        globalStreamer?.stopAll();
+        setStatus("listening");
+      }
+
+      if (serverContent.inputTranscription) {
+        addLog(`用户: ${serverContent.inputTranscription.text}`);
+      }
+    }
+
+    if (msg.toolCall) {
+      setStatus("thinking");
+      handleToolCall(msg.toolCall);
+    }
+
+    if (msg.setupComplete) {
+      addLog("会话初始化完成");
+    }
   };
+
+  const handleToolCall = async (toolCall: any) => {
+    const functionResponses = [];
+    const { invoke } = await import("@tauri-apps/api/core");
+    
+    for (const fc of toolCall.functionCalls) {
+      addLog(`执行工具: ${fc.name}`);
+      try {
+        const result = await invoke(fc.name, fc.args || {});
+        functionResponses.push({
+          name: fc.name,
+          id: fc.id,
+          response: { result }
+        });
+      } catch (e) {
+        functionResponses.push({
+          name: fc.name,
+          id: fc.id,
+          response: { error: String(e) }
+        });
+      }
+    }
+    globalClient?.sendToolResponse(functionResponses);
+    setStatus("listening");
+  };
+
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: "auto" });
+  }, [logs]);
 
   return (
     <main className="min-h-screen bg-[#0a0a0b] text-white flex flex-col items-center justify-between p-8 overflow-hidden">
-      {/* Header */}
       <div className="w-full flex justify-between items-center z-20">
         <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded-full bg-blue-500 animate-pulse" />
-          <h1 className="text-xl font-light tracking-widest uppercase">Jiling / 机灵</h1>
+          <div className={`w-3 h-3 rounded-full ${isConnected ? "bg-green-500" : "bg-blue-500"} animate-pulse`} />
+          <h1 className="text-xl font-light tracking-widest uppercase text-white">Jiling / 机灵</h1>
         </div>
         <Button variant="ghost" size="icon" className="rounded-full hover:bg-white/10">
           <Settings className="w-5 h-5 text-slate-400" />
         </Button>
       </div>
 
-      {/* Center Content */}
       <div className="flex-1 flex flex-col items-center justify-center gap-12 z-10">
         <SmartOrb volume={volume} status={status} />
         
@@ -146,11 +242,12 @@ export default function JilingPage() {
             <p className="text-sm font-medium text-blue-300">
               {status === "idle" ? "点击开始交互" : 
                status === "listening" ? "正在倾听..." : 
-               status === "thinking" ? "机灵正在思考并执行任务..." : "正在为您解答"}
+               status === "thinking" ? "正在执行任务..." : "正在为您解答"}
             </p>
           </div>
           
           <Button 
+            disabled={isStarting}
             onClick={isConnected ? () => window.location.reload() : startInteraction}
             className={`w-16 h-16 rounded-full transition-all duration-500 ${
               isConnected ? "bg-red-500/20 border-red-500/50 hover:bg-red-500/30" : "bg-blue-500 hover:bg-blue-600"
@@ -161,21 +258,12 @@ export default function JilingPage() {
         </div>
       </div>
 
-      {/* Log Panel (Glassmorphism) */}
       <div className="w-full max-w-2xl h-48 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-4 flex flex-col gap-2 z-20">
-        <div className="flex items-center gap-2 border-b border-white/10 pb-2 mb-2">
-          <Terminal className="w-4 h-4 text-blue-400" />
-          <span className="text-xs font-mono uppercase tracking-tighter text-slate-400">Activity Log / Agent 执行记录</span>
-        </div>
         <ScrollArea className="flex-1 font-mono text-[10px] leading-relaxed text-slate-300">
-          {logs.map((log, i) => (
-            <div key={i} className="mb-1">{log}</div>
-          ))}
+          {logs.map((log, i) => <div key={i}>{log}</div>)}
+          <div ref={logEndRef} />
         </ScrollArea>
       </div>
-
-      {/* Background Decoration */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-500/5 rounded-full blur-[120px] pointer-events-none" />
     </main>
   );
 }

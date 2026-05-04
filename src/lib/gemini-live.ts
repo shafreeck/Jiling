@@ -1,105 +1,149 @@
-export interface ToolCall {
-  function_calls: Array<{
-    name: string;
-    args: any;
-    id: string;
-  }>;
-}
-
-export interface LiveAPIConfig {
-  apiKey: string;
-  model?: string;
-}
+import { invoke } from "@tauri-apps/api/core";
 
 export class GeminiLiveClient {
-  private socket: WebSocket | null = null;
-  private apiKey: string;
+  private ws: WebSocket | null = null;
+  private url: string;
   private model: string;
-  private onMessageCallback?: (msg: any) => void;
+  private onMessage: (msg: any) => void;
+  private onError: (err: any) => void;
+  private onLog: (msg: string) => void;
 
-  constructor(config: LiveAPIConfig) {
-    this.apiKey = config.apiKey;
-    this.model = config.model || "gemini-2.0-flash-exp";
+  constructor(
+    onMessage: (msg: any) => void,
+    onError: (err: any) => void,
+    onLog: (msg: string) => void,
+    model: string = "gemini-3.1-flash-live-preview"
+  ) {
+    this.onMessage = onMessage;
+    this.onError = onError;
+    this.onLog = onLog;
+    this.model = model;
+    this.url = ""; // Will be set in connect()
   }
 
   async connect() {
-    const url = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenericService/BidiGenerateContent?key=${this.apiKey}`;
-    this.socket = new WebSocket(url);
+    try {
+      const apiKey = await invoke<string>("get_api_key");
+      if (!apiKey) throw new Error("API Key 为空");
 
-    return new Promise((resolve, reject) => {
-      this.socket!.onopen = () => {
-        console.log("Gemini Live Connected");
-        this.sendSetup();
-        resolve(true);
-      };
-      this.socket!.onerror = (err) => reject(err);
-      this.socket!.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (this.onMessageCallback) this.onMessageCallback(data);
-      };
-    });
-  }
+      this.url = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${apiKey}`;
+      
+      this.onLog(`正在尝试连接 (API Key 已就绪)...`);
+      this.ws = new WebSocket(this.url);
 
-  private sendSetup() {
-    const setupMsg = {
-      setup: {
-        model: `models/${this.model}`,
-        generation_config: {
-          response_modalities: ["AUDIO"],
-        },
-        tools: [
-          {
-            function_declarations: [
-              {
-                name: "execute_agent",
-                description: "在电脑上执行本地 AI Agent 指令（如 openclaw, codex）来完成复杂任务。",
-                parameters: {
-                  type: "OBJECT",
-                  properties: {
-                    agent: { type: "STRING", description: "Agent 名称，例如 'openclaw' 或 'codex'" },
-                    task: { type: "STRING", description: "要执行的具体任务描述" },
-                  },
-                  required: ["agent", "task"],
+      this.ws.onopen = () => {
+        this.onLog("WebSocket 已连接");
+        // 拨乱反正：根据服务器报错，顶级键名必须是 setup
+        const configMessage = {
+          setup: {
+            model: `models/${this.model}`,
+            generationConfig: {
+              responseModalities: ["AUDIO"],
+            },
+            systemInstruction: {
+              parts: [{ text: `你叫“机灵”(Jiling)，是一个运行在 macOS 上的超强 AI 助手。
+你有两个核心技能：
+1. 捕获屏幕 (capture_screen)：当你需要“看见”用户的屏幕内容来提供帮助时调用。
+2. 执行本地代理 (execute_agent)：当你遇到复杂的网页操作、代码编写或需要长时间思考的任务时，请调用此工具，并将 agent 参数设为 "openclaw"。
+请保持口语化、简洁且高效。` }]
+            },
+            tools: [{
+              functionDeclarations: [
+                {
+                  name: "execute_agent",
+                  description: "执行本地 AI 代理处理复杂任务。",
+                  parameters: {
+                    type: "OBJECT",
+                    properties: {
+                      agent: { type: "STRING" },
+                      task: { type: "STRING" }
+                    },
+                    required: ["agent", "task"]
+                  }
                 },
-              },
-            ],
-          },
-        ],
-      },
-    };
-    this.socket?.send(JSON.stringify(setupMsg));
-  }
+                {
+                  name: "capture_screen",
+                  description: "捕获当前屏幕截图。",
+                  parameters: { type: "OBJECT", properties: {} }
+                }
+              ]
+            }]
+          }
+        };
+        this.send(configMessage);
+        this.onLog("配置消息已发送");
+      };
 
-  sendAudio(base64Audio: string) {
-    if (this.socket?.readyState === WebSocket.OPEN) {
-      this.socket.send(JSON.stringify({
-        realtime_input: {
-          media_chunks: [{
-            mime_type: "audio/pcm",
-            data: base64Audio,
-          }]
+      this.ws.onmessage = async (event) => {
+        try {
+          let data = event.data;
+          if (data instanceof Blob) {
+            data = await data.text();
+          }
+          const response = JSON.parse(data);
+          this.onMessage(response);
+        } catch (e) {
+          this.onLog(`解析消息失败: ${e} (Data type: ${typeof event.data})`);
         }
-      }));
+      };
+
+      this.ws.onerror = (error) => {
+        this.onError(error);
+      };
+
+      this.ws.onclose = (event) => {
+        this.onLog(`连接已关闭: Code=${event.code}, Reason=${event.reason || "无"}`);
+        this.onError(new Error(`WebSocket Closed: ${event.code}`));
+      };
+
+    } catch (err) {
+      this.onError(err);
     }
   }
 
-  sendToolResponse(callId: string, result: any) {
-    const response = {
-      tool_response: {
-        function_responses: [{
-          id: callId,
-          response: { result },
-        }]
-      }
-    };
-    this.socket?.send(JSON.stringify(response));
+  private send(data: any) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(data));
+    }
   }
 
-  onMessage(callback: (msg: any) => void) {
-    this.onMessageCallback = callback;
+  sendAudio(base64Data: string) {
+    this.send({
+      realtimeInput: {
+        audio: {
+          data: base64Data,
+          mimeType: "audio/pcm;rate=16000"
+        }
+      }
+    });
+  }
+
+  sendInterruption() {
+    // 虽然文档 JS 示例没写，但 Bidi 参考提到了 clientContent 模式用于打断
+    this.send({
+      clientContent: {
+        turns: [],
+        turnComplete: false
+      }
+    });
+  }
+
+  sendToolResponse(functionResponses: any[]) {
+    this.send({
+      toolResponse: {
+        functionResponses: functionResponses
+      }
+    });
   }
 
   disconnect() {
-    this.socket?.close();
+    if (this.ws) {
+      this.ws.onopen = null;
+      this.ws.onmessage = null;
+      this.ws.onerror = null;
+      this.ws.onclose = null;
+      this.ws.close();
+      this.ws = null;
+    }
   }
 }
