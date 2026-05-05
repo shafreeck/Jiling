@@ -54,10 +54,11 @@ impl Db {
         Ok(())
     }
 
-    pub fn append_task_output(&self, run_id: &str, delta: &str) -> Result<()> {
+    // 采用“覆盖写”策略防止累加重复
+    pub fn set_task_output(&self, run_id: &str, text: &str) -> Result<()> {
         self.conn.execute(
-            "UPDATE tasks SET output = output || ?, updated_at = CURRENT_TIMESTAMP WHERE run_id = ?",
-            params![delta, run_id],
+            "UPDATE tasks SET output = ?, updated_at = CURRENT_TIMESTAMP WHERE run_id = ?",
+            params![text, run_id],
         )?;
         Ok(())
     }
@@ -114,9 +115,9 @@ mod tests {
         let tasks = db.get_in_progress_tasks().unwrap();
         assert_eq!(tasks.len(), 1);
 
-        // Test Append Output
-        db.append_task_output("run-1", "Hello ").unwrap();
-        db.append_task_output("run-1", "World").unwrap();
+        // Test Set Output (Replace)
+        db.set_task_output("run-1", "Hello").unwrap();
+        db.set_task_output("run-1", "Hello World").unwrap();
         let output = db.get_task_output("run-1").unwrap();
         assert_eq!(output, "Hello World");
 

@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 use tokio::sync::{mpsc, Mutex};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::{AppHandle, Emitter};
+use tauri::Emitter;
 use dashmap::DashMap;
 use crate::db::Db;
 
@@ -20,7 +20,9 @@ pub struct AcpEvent {
 
 pub struct GlobalAcpManager {
     tx: mpsc::UnboundedSender<AcpCommand>,
+    #[allow(dead_code)]
     db: Arc<Mutex<Db>>,
+    #[allow(dead_code)]
     pending_requests: Arc<DashMap<String, PendingRequest>>,
 }
 
@@ -151,8 +153,9 @@ async fn acp_loop(
                         
                         let db_lock = db.lock().await;
                         if stream == "assistant" {
-                            if let Some(delta) = payload["data"]["text"].as_str() {
-                                let _ = db_lock.append_task_output(run_id, delta);
+                            if let Some(text) = payload["data"]["text"].as_str() {
+                                // 采用覆盖写策略防止累加重复
+                                let _ = db_lock.set_task_output(run_id, text);
                                 app_handle.emit("acp-event", AcpEvent {
                                     run_id: run_id.to_string(),
                                     event_type: "assistant".to_string(),
@@ -189,7 +192,10 @@ async fn acp_loop(
                                     let db_lock = db.lock().await;
                                     let _ = db_lock.update_task_status(run_id, "end");
                                     if let Some(output) = payload["result"]["payload"]["output"].as_str() {
-                                        let _ = db_lock.append_task_output(run_id, output);
+                                        // 仅当最终结果非空时覆盖
+                                        if !output.is_empty() {
+                                            let _ = db_lock.set_task_output(run_id, output);
+                                        }
                                     }
                                 }
                             } else if v["error"] == "not_found" {
