@@ -36,6 +36,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             acp::execute_agent_acp_task,
             acp::abort_agent_task,
+            acp::get_task_output,
             commands::get_api_key,
             commands::capture_screen
         ])

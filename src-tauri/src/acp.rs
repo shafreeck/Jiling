@@ -20,10 +20,9 @@ pub struct AcpEvent {
 
 pub struct GlobalAcpManager {
     tx: mpsc::UnboundedSender<AcpCommand>,
+    pub db: Arc<Mutex<Db>>,
     #[allow(dead_code)]
-    db: Arc<Mutex<Db>>,
-    #[allow(dead_code)]
-    pending_requests: Arc<DashMap<String, PendingRequest>>,
+    pub pending_requests: Arc<DashMap<String, PendingRequest>>,
 }
 
 struct PendingRequest {
@@ -46,7 +45,7 @@ impl GlobalAcpManager {
         let db_clone = Arc::clone(&db);
         let pending_clone = Arc::clone(&pending_requests);
 
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             loop {
                 if let Err(e) = acp_loop(&app_handle, &mut rx, Arc::clone(&db_clone), Arc::clone(&pending_clone)).await {
                     eprintln!("ACP Loop Error: {}. Retrying in 5s...", e);
@@ -154,7 +153,6 @@ async fn acp_loop(
                         let db_lock = db.lock().await;
                         if stream == "assistant" {
                             if let Some(text) = payload["data"]["text"].as_str() {
-                                // 采用覆盖写策略防止累加重复
                                 let _ = db_lock.set_task_output(run_id, text);
                                 app_handle.emit("acp-event", AcpEvent {
                                     run_id: run_id.to_string(),
@@ -192,7 +190,6 @@ async fn acp_loop(
                                     let db_lock = db.lock().await;
                                     let _ = db_lock.update_task_status(run_id, "end");
                                     if let Some(output) = payload["result"]["payload"]["output"].as_str() {
-                                        // 仅当最终结果非空时覆盖
                                         if !output.is_empty() {
                                             let _ = db_lock.set_task_output(run_id, output);
                                         }
@@ -249,6 +246,20 @@ fn timestamp_ns() -> u128 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
 }
 
+// Structs for Tauri Command Arguments to support both snake_case and camelCase mapping seamlessly
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct RunTaskArgs {
+    pub agent: String,
+    pub task: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct RunIdArgs {
+    pub run_id: String,
+}
+
 // Tauri Commands
 #[tauri::command]
 pub async fn execute_agent_acp_task(
@@ -265,4 +276,13 @@ pub async fn abort_agent_task(
     run_id: String
 ) -> Result<(), String> {
     state.abort_task(run_id).await
+}
+
+#[tauri::command]
+pub async fn get_task_output(
+    state: tauri::State<'_, Arc<GlobalAcpManager>>,
+    run_id: String
+) -> Result<String, String> {
+    let db = state.db.lock().await;
+    db.get_task_output(&run_id).map_err(|e| e.to_string())
 }

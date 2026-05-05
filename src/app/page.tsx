@@ -207,7 +207,16 @@ export default function JilingPage() {
     for (const fc of toolCall.functionCalls) {
       addLog(`执行工具: ${fc.name}`);
       try {
-        const result = await invoke(fc.name, fc.args || {});
+        // 关键修复：将 Gemini 的 snake_case 参数映射为 Tauri 的 camelCase
+        const args: any = {};
+        if (fc.args) {
+          for (const key in fc.args) {
+            const camelKey = key.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
+            args[camelKey] = fc.args[key];
+          }
+        }
+
+        const result = await invoke(fc.name, args);
         functionResponses.push({
           name: fc.name,
           id: fc.id,
@@ -228,6 +237,55 @@ export default function JilingPage() {
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: "auto" });
   }, [logs]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    
+    const setupListener = async () => {
+      const { listen } = await import("@tauri-apps/api/event");
+      const { invoke } = await import("@tauri-apps/api/core");
+      
+      unlisten = await listen("acp-event", async (event: any) => {
+        const { run_id, event_type, data } = event.payload;
+        
+        if (event_type === "assistant") {
+          // 实时日志展示
+          addLog(`[Agent] ${data.text}`);
+        } else if (event_type === "lifecycle") {
+          addLog(`[任务状态] ${run_id}: ${data.phase}`);
+          
+          if (data.phase === "end") {
+            addLog(`[对账] 任务已完成，正在提取最终结果...`);
+            try {
+              const output = await invoke<string>("get_task_output", { runId: run_id });
+              if (output && globalClient) {
+                addLog(`[语音上报] 正在将结果反馈给 Gemini...`);
+                globalClient.sendSystemUpdate(`背景任务执行完毕。runId: ${run_id}\n\n执行结果如下：\n${output}\n\n请向用户简要汇报上述结果。`);
+              }
+            } catch (e) {
+              addLog(`[错误] 提取结果失败: ${e}`);
+            }
+          }
+        }
+      });
+
+      // 监听 Tick
+      const unlistenTick = await listen("acp-tick", () => {
+        // 心跳可视化或静默维持（此处仅记日志或忽略）
+        // console.log("ACP Tick received");
+      });
+
+      return () => {
+        if (unlisten) unlisten();
+        unlistenTick();
+      };
+    };
+
+    const cleanup = setupListener();
+    return () => {
+      cleanup.then(fn => fn && fn());
+    };
+  }, []);
 
   return (
     <main className="min-h-screen bg-[#0a0a0b] text-white flex flex-col items-center justify-between p-8 overflow-hidden">

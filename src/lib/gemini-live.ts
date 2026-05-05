@@ -33,7 +33,6 @@ export class GeminiLiveClient {
 
       this.ws.onopen = () => {
         this.onLog("WebSocket 已连接");
-        // 拨乱反正：根据服务器报错，顶级键名必须是 setup
         const configMessage = {
           setup: {
             model: `models/${this.model}`,
@@ -48,8 +47,8 @@ export class GeminiLiveClient {
 3. 中止代理任务 (abort_agent_task)：当用户明确要求停止、取消或重做某个正在进行的后台任务时调用。
 
 交互准则：
-- 任务执行是异步的，提交后请告知用户“正在处理，结果出来后我会告诉你”。
-- 你的播报应在任务完成后自然发生，或者在静默期插入。
+- 任务执行是异步的。当你调用 execute_agent_acp_task 后，请仅告知用户“已提交后台处理，请稍等”，**绝对禁止**编造结果。
+- 任务完成后，系统会向你发送一条包含结果的系统更新消息。届时请你根据该消息内容自然地向用户播报。
 请保持口语化、简洁且高效。` }]
             },
             tools: [{
@@ -135,7 +134,6 @@ export class GeminiLiveClient {
   }
 
   sendInterruption() {
-    // 虽然文档 JS 示例没写，但 Bidi 参考提到了 clientContent 模式用于打断
     this.send({
       clientContent: {
         turns: [],
@@ -148,6 +146,19 @@ export class GeminiLiveClient {
     this.send({
       toolResponse: {
         functionResponses: functionResponses
+      }
+    });
+  }
+
+  // 改用 User 角色注入系统更新，这是更稳健的协议用法
+  sendSystemUpdate(text: string) {
+    this.send({
+      clientContent: {
+        turns: [{
+          role: "user",
+          parts: [{ text: `[SYSTEM UPDATE] ${text}` }]
+        }],
+        turnComplete: true
       }
     });
   }
