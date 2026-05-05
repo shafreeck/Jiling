@@ -7,7 +7,11 @@ use serde_json::json;
 
 #[tauri::command]
 pub async fn execute_agent_acp_task(agent: String, task: String) -> Result<String, String> {
-    println!("🚀 [Jiling] 正在发起 ACP 任务: {}", task);
+    let mut agent_id = agent.clone();
+    if agent_id == "openclaw" || agent_id.is_empty() {
+        agent_id = "main".to_string();
+    }
+    println!("🚀 [Jiling] 正在发起 ACP 任务 (Agent: {}): {}", agent_id, task);
     
     let home = std::env::var("HOME").map_err(|e| e.to_string())?;
     
@@ -72,7 +76,7 @@ pub async fn execute_agent_acp_task(agent: String, task: String) -> Result<Strin
                     let agent_msg = json!({
                         "type": "req", "method": "agent", "id": "agent_run",
                         "params": { 
-                            "agentId": agent, 
+                            "agentId": agent_id, 
                             "message": task.clone(),
                             "deliver": false,
                             "idempotencyKey": idempotency_key
