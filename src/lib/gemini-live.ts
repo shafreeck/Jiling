@@ -21,6 +21,9 @@ export class GeminiLiveClient {
     this.url = ""; // Will be set in connect()
   }
 
+  // 静态 Token，用于跨连接保持记忆
+  private static resumptionToken: string | null = null;
+
   async connect() {
     try {
       const apiKey = await invoke<string>("get_api_key");
@@ -39,6 +42,14 @@ export class GeminiLiveClient {
             generationConfig: {
               responseModalities: ["AUDIO"],
             },
+            // 1. 开启上下文自动压缩 (滑动窗口)
+            contextWindowCompression: {
+              slidingWindow: {}
+            },
+            // 2. 只有在有 Token 时才尝试续接
+            sessionResumption: GeminiLiveClient.resumptionToken 
+              ? { sessionToken: GeminiLiveClient.resumptionToken } 
+              : {},
             systemInstruction: {
               parts: [{ text: `你叫“机灵”(Jiling)，是一个运行在 macOS 上的超强 AI 助手。
 你拥有以下核心技能：
@@ -96,6 +107,18 @@ export class GeminiLiveClient {
             data = await data.text();
           }
           const response = JSON.parse(data);
+          
+          // 3. 捕获续接令牌 (sessionResumptionUpdate)
+          if (response.sessionResumptionUpdate?.sessionToken) {
+            GeminiLiveClient.resumptionToken = response.sessionResumptionUpdate.sessionToken;
+          }
+
+          // 4. 监听 GoAway 信号 (服务器主动断开前兆)
+          if (response.serverContent?.goAway) {
+            this.onLog("[协议] 收到服务器 GoAway 信号，准备续接...");
+            // 这种情况下不报错，由外部 handleDisconnect 触发重连
+          }
+
           this.onMessage(response);
         } catch (e) {
           this.onLog(`解析消息失败: ${e} (Data type: ${typeof event.data})`);

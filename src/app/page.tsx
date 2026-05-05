@@ -93,106 +93,79 @@ export default function JilingPage() {
     setLogs(prev => [...prev.slice(-50), `[${new Date().toLocaleTimeString()}] ${msg}`]);
   };
 
-  const startInteraction = async (isReconnect = false) => {
-    if (isStarting && !isReconnect) return;
-    if (!isReconnect) setIsStarting(true);
+  const startInteraction = async () => {
+    if (isStarting) return;
+    setIsStarting(true);
 
     try {
-      // 彻底清理旧实例
+      // 清理
       if (globalClient) globalClient.disconnect();
+      if (globalProcessor) globalProcessor.disconnect();
+      if (globalStreamer) globalStreamer.stopAll();
+      if (globalContext) await globalContext.close().catch(() => {});
       
-      // 如果是重连，我们不关闭 AudioContext 以避免杂音
-      if (!isReconnect) {
-        if (globalProcessor) globalProcessor.disconnect();
-        if (globalStreamer) globalStreamer.stopAll();
-        if (globalContext) await globalContext.close().catch(() => {});
-        globalContext = new AudioContext({ sampleRate: 24000 });
-        globalStreamer = new AudioStreamer(globalContext);
-        globalStreamer.onAllEnded = () => {
-          setStatus(prev => prev === "speaking" ? "listening" : prev);
-        };
-      }
+      globalContext = new AudioContext({ sampleRate: 24000 });
+      globalStreamer = new AudioStreamer(globalContext);
+      globalStreamer.onAllEnded = () => {
+        setStatus(prev => prev === "speaking" ? "listening" : prev);
+      };
 
       globalClient = new GeminiLiveClient(
         (msg) => handleGeminiMessage(msg),
         (err) => {
-          addLog(`错误: ${err.message || err}`);
-          // 如果连接在开启状态下报错，尝试触发重连逻辑
-          if (isConnected) handleDisconnect();
+          addLog(`错误: ${err}`);
+          // 仅在已连接状态下触发重连，避免启动失败时的死循环
+          if (isConnected) {
+            addLog("[系统] 连接异常，正在尝试自动续接...");
+            setTimeout(() => startInteraction(), 1000);
+          }
         },
         (log) => addLog(log)
       );
 
-      // 劫持 onclose 实现自动重连
-      const originalConnect = globalClient.connect.bind(globalClient);
-      await originalConnect();
-      
-      // 获取内部 ws 引用以监听关闭
-      const ws = (globalClient as any).ws as WebSocket;
-      if (ws) {
-        ws.addEventListener("close", (e) => {
-          if (e.code === 1008 || e.code === 1001) {
-            addLog(`[系统] 会话达到时长限制或连接异常 (Code ${e.code})，准备自动重连...`);
-            handleDisconnect();
-          }
-        });
-      }
-
-      if (!isReconnect) {
-        globalClient.sendInterruption();
-        
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 16000 } 
-        });
-        const source = globalContext!.createMediaStreamSource(stream);
-        const processor = globalContext!.createScriptProcessor(1024, 1, 1);
-        globalProcessor = processor;
-
-        processor.onaudioprocess = (e) => {
-          const inputData = e.inputBuffer.getChannelData(0);
-          let sum = 0;
-          for (let i = 0; i < inputData.length; i++) sum += inputData[i] * inputData[i];
-          setVolume(Math.sqrt(sum / inputData.length));
-          if (statusRef.current === "speaking" || statusRef.current === "thinking") return;
-          const pcm16 = new Int16Array(Math.floor(inputData.length * 16000 / 24000));
-          for (let i = 0, j = 0; i < inputData.length && j < pcm16.length; i += 1.5, j++) {
-            pcm16[j] = inputData[Math.floor(i)] * 0x7FFF;
-          }
-          const bytes = new Uint8Array(pcm16.buffer);
-          let binary = "";
-          for (let i = 0; i < bytes.length; i += 8192) {
-            binary += String.fromCharCode.apply(null, bytes.slice(i, i + 8192) as unknown as number[]);
-          }
-          globalClient?.sendAudio(btoa(binary));
-        };
-
-        source.connect(processor);
-        processor.connect(globalContext!.destination);
-      }
-
+      await globalClient.connect();
+      globalClient.sendInterruption(); 
       setIsConnected(true);
       setStatus("listening");
       setIsStarting(false);
 
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 16000 } 
+      });
+      const source = globalContext.createMediaStreamSource(stream);
+      const processor = globalContext.createScriptProcessor(1024, 1, 1); // 文档建议的小切片
+      globalProcessor = processor;
+
+      processor.onaudioprocess = (e) => {
+        const inputData = e.inputBuffer.getChannelData(0);
+        
+        let sum = 0;
+        for (let i = 0; i < inputData.length; i++) sum += inputData[i] * inputData[i];
+        setVolume(Math.sqrt(sum / inputData.length));
+
+        // 如果在说话，静音采集发送
+        if (statusRef.current === "speaking" || statusRef.current === "thinking") return;
+
+        const pcm16 = new Int16Array(Math.floor(inputData.length * 16000 / 24000));
+        for (let i = 0, j = 0; i < inputData.length && j < pcm16.length; i += 1.5, j++) {
+          pcm16[j] = inputData[Math.floor(i)] * 0x7FFF;
+        }
+        
+        const bytes = new Uint8Array(pcm16.buffer);
+        let binary = "";
+        for (let i = 0; i < bytes.length; i += 8192) {
+          binary += String.fromCharCode.apply(null, bytes.slice(i, i + 8192) as unknown as number[]);
+        }
+        globalClient?.sendAudio(btoa(binary));
+      };
+
+      source.connect(processor);
+      processor.connect(globalContext.destination);
+
     } catch (err) {
       addLog(`失败: ${err}`);
       setIsStarting(false);
-      setIsConnected(false);
     }
-  };
-
-  const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const handleDisconnect = () => {
-    if (reconnectTimerRef.current) return;
-    
-    setIsConnected(false);
-    setStatus("idle");
-    addLog("[系统] 正在尝试自动恢复会话...");
-    
-    reconnectTimerRef.current = setTimeout(() => {
-      reconnectTimerRef.current = null;
-      startInteraction(true);
-    }, 2000); // 2秒后重连
   };
 
   const handleGeminiMessage = (msg: any) => {
