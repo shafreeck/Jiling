@@ -113,17 +113,26 @@ export default function JilingPage() {
       globalClient = new GeminiLiveClient(
         (msg) => handleGeminiMessage(msg),
         (err) => {
-          addLog(`错误: ${err}`);
-          // 仅在已连接状态下触发重连，避免启动失败时的死循环
-          if (isConnected) {
-            addLog("[系统] 连接异常，正在尝试自动续接...");
-            setTimeout(() => startInteraction(), 1000);
-          }
+          // 仅打印日志，不直接触发重连，重连由 onclose 统一处理
+          addLog(`通信异常: ${err.message || err}`);
         },
         (log) => addLog(log)
       );
 
       await globalClient.connect();
+      
+      // 获取内部 ws 引用以监听关闭
+      const ws = (globalClient as any).ws as WebSocket;
+      if (ws) {
+        ws.addEventListener("close", (e) => {
+          // 只要不是我们手动点“停止”导致的关闭，且处于连接状态，就尝试重连
+          if (statusRef.current !== "idle") {
+            addLog(`[系统] 连接已断开 (Code ${e.code})，正在自动续接...`);
+            setTimeout(() => startInteraction(), 1000);
+          }
+        });
+      }
+
       globalClient.sendInterruption(); 
       setIsConnected(true);
       setStatus("listening");

@@ -115,8 +115,8 @@ export class GeminiLiveClient {
 
           // 4. 监听 GoAway 信号 (服务器主动断开前兆)
           if (response.serverContent?.goAway) {
-            this.onLog("[协议] 收到服务器 GoAway 信号，准备续接...");
-            // 这种情况下不报错，由外部 handleDisconnect 触发重连
+            this.onLog("[协议] 收到服务器 GoAway 信号，主动关闭并触发续接...");
+            this.ws?.close(); 
           }
 
           this.onMessage(response);
