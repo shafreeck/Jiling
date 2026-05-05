@@ -1,7 +1,9 @@
 use tauri_plugin_log::{Target, TargetKind, RotationStrategy};
+use tauri::Manager;
 
-mod acp;
+pub mod acp;
 mod commands;
+pub mod db;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -26,9 +28,14 @@ pub fn run() {
                 })
                 .build(),
         )
+        .setup(|app| {
+            let manager = std::sync::Arc::new(acp::GlobalAcpManager::new(app.handle().clone()));
+            app.manage(manager);
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             acp::execute_agent_acp_task,
-            acp::query_agent_task,
+            acp::abort_agent_task,
             commands::get_api_key,
             commands::capture_screen
         ])

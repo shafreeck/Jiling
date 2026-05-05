@@ -2,228 +2,224 @@ use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 use futures_util::{StreamExt, SinkExt};
 use ed25519_dalek::{SigningKey, Signer, pkcs8::DecodePrivateKey};
 use base64::{Engine as _, engine::general_purpose};
-use std::fs::{self, OpenOptions};
-use std::io::Write;
-use serde_json::json;
-use tokio::time::{timeout, Duration};
+use std::fs;
+use serde_json::{json, Value};
+use tokio::sync::{mpsc, Mutex};
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tauri::{AppHandle, Emitter};
+use dashmap::DashMap;
+use crate::db::Db;
 
-/// 辅助函数：记录日志到文件，方便调试
-fn log_acp(msg: &str) {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    let log_path = format!("{}/.openclaw/logs/jiling-acp.log", home);
-    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-    
-    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(log_path) {
-        let _ = writeln!(file, "[{}] {}", timestamp, msg);
-    }
-    println!("{}", msg); // 同时打印到控制台
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AcpEvent {
+    pub run_id: String,
+    pub event_type: String,
+    pub data: Value,
 }
 
-#[tauri::command]
-pub async fn execute_agent_acp_task(agent: String, task: String) -> Result<String, String> {
-    log_acp(&format!("🚀 [Jiling] 发起任务: {}", task));
-    
+pub struct GlobalAcpManager {
+    tx: mpsc::UnboundedSender<AcpCommand>,
+    db: Arc<Mutex<Db>>,
+    pending_requests: Arc<DashMap<String, PendingRequest>>,
+}
+
+struct PendingRequest {
+    tx: mpsc::Sender<String>,
+    agent_id: String,
+    message: String,
+}
+
+enum AcpCommand {
+    RunTask { agent_id: String, message: String, run_id_tx: mpsc::Sender<String> },
+    AbortTask { run_id: String },
+}
+
+impl GlobalAcpManager {
+    pub fn new(app_handle: tauri::AppHandle) -> Self {
+        let (tx, mut rx) = mpsc::unbounded_channel::<AcpCommand>();
+        let db = Arc::new(Mutex::new(Db::new().expect("Failed to initialize DB")));
+        let pending_requests = Arc::new(DashMap::new());
+        
+        let db_clone = Arc::clone(&db);
+        let pending_clone = Arc::clone(&pending_requests);
+
+        tokio::spawn(async move {
+            loop {
+                if let Err(e) = acp_loop(&app_handle, &mut rx, Arc::clone(&db_clone), Arc::clone(&pending_clone)).await {
+                    eprintln!("ACP Loop Error: {}. Retrying in 5s...", e);
+                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                }
+            }
+        });
+
+        GlobalAcpManager { tx, db, pending_requests }
+    }
+
+    pub async fn run_task(&self, agent_id: String, message: String) -> Result<String, String> {
+        let (run_id_tx, mut run_id_rx) = mpsc::channel(1);
+        self.tx.send(AcpCommand::RunTask { agent_id, message, run_id_tx }).map_err(|e| e.to_string())?;
+        
+        match tokio::time::timeout(tokio::time::Duration::from_secs(30), run_id_rx.recv()).await {
+            Ok(Some(run_id)) => Ok(run_id),
+            _ => Err("Failed to get runId (Timeout)".to_string())
+        }
+    }
+
+    pub async fn abort_task(&self, run_id: String) -> Result<(), String> {
+        self.tx.send(AcpCommand::AbortTask { run_id }).map_err(|e| e.to_string())
+    }
+}
+
+async fn acp_loop(
+    app_handle: &tauri::AppHandle, 
+    rx: &mut mpsc::UnboundedReceiver<AcpCommand>, 
+    db: Arc<Mutex<Db>>,
+    pending_requests: Arc<DashMap<String, PendingRequest>>
+) -> Result<(), String> {
+    let ws_url = "ws://127.0.0.1:18789/acp";
+    let (ws_stream, _) = connect_async(ws_url).await.map_err(|e| e.to_string())?;
+    let (mut ws_write, mut ws_read) = ws_stream.split();
+
+    let mut authenticated = false;
+    let (device_id, device_token, signing_key) = load_identity()?;
+
+    loop {
+        tokio::select! {
+            Some(cmd) = rx.recv() => {
+                if !authenticated { continue; }
+                match cmd {
+                    AcpCommand::RunTask { agent_id, message, run_id_tx } => {
+                        let req_id = format!("run-{}", timestamp_ns());
+                        pending_requests.insert(req_id.clone(), PendingRequest {
+                            tx: run_id_tx,
+                            agent_id: agent_id.clone(),
+                            message: message.clone(),
+                        });
+                        
+                        let idempotency_key = format!("jiling-{}", timestamp_ns());
+                        let msg = json!({
+                            "type": "req", "method": "agent", "id": req_id,
+                            "params": { "agentId": agent_id, "message": message, "idempotencyKey": idempotency_key }
+                        });
+                        let _ = ws_write.send(Message::Text(msg.to_string().into())).await;
+                    }
+                    AcpCommand::AbortTask { run_id } => {
+                        let msg = json!({
+                            "type": "req", "method": "sessions.abort", "id": format!("abort-{}", timestamp_ns()),
+                            "params": { "runId": run_id }
+                        });
+                        let _ = ws_write.send(Message::Text(msg.to_string().into())).await;
+                    }
+                }
+            }
+            Some(Ok(msg)) = ws_read.next() => {
+                if let Message::Text(text) = msg {
+                    let v: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
+                    
+                    if v["event"] == "connect.challenge" {
+                        let auth_msg = build_auth_msg(&v, &device_id, &device_token, &signing_key);
+                        let _ = ws_write.send(Message::Text(auth_msg.to_string().into())).await;
+                        continue;
+                    }
+                    if v["type"] == "res" && v["id"] == "auth" {
+                        if v["ok"] == true {
+                            authenticated = true;
+                            let db_lock = db.lock().await;
+                            if let Ok(tasks) = db_lock.get_in_progress_tasks() {
+                                for (run_id, _) in tasks {
+                                    let wait_msg = json!({
+                                        "type": "req", "method": "agent.wait", "id": format!("wait-{}", run_id),
+                                        "params": { "runId": run_id }
+                                    });
+                                    let _ = ws_write.send(Message::Text(wait_msg.to_string().into())).await;
+                                }
+                            }
+                        }
+                        continue;
+                    }
+
+                    if v["event"] == "tick" {
+                        app_handle.emit("acp-tick", ()).unwrap_or(());
+                        continue;
+                    }
+
+                    if v["event"] == "agent" {
+                        let payload = &v["payload"];
+                        let run_id = payload["runId"].as_str().unwrap_or("");
+                        let stream = payload["stream"].as_str().unwrap_or("");
+                        
+                        let db_lock = db.lock().await;
+                        if stream == "assistant" {
+                            if let Some(delta) = payload["data"]["text"].as_str() {
+                                let _ = db_lock.append_task_output(run_id, delta);
+                                app_handle.emit("acp-event", AcpEvent {
+                                    run_id: run_id.to_string(),
+                                    event_type: "assistant".to_string(),
+                                    data: payload["data"].clone()
+                                }).unwrap_or(());
+                            }
+                        } else if stream == "lifecycle" {
+                            let phase = payload["data"]["phase"].as_str().unwrap_or("");
+                            let _ = db_lock.update_task_status(run_id, phase);
+                             app_handle.emit("acp-event", AcpEvent {
+                                run_id: run_id.to_string(),
+                                event_type: "lifecycle".to_string(),
+                                data: payload["data"].clone()
+                            }).unwrap_or(());
+                        }
+                    }
+                    
+                    if v["type"] == "res" {
+                        let res_id = v["id"].as_str().unwrap_or("");
+                        if res_id.starts_with("run-") {
+                            if let Some((_, pending)) = pending_requests.remove(res_id) {
+                                if v["ok"] == true {
+                                    let run_id = v["payload"]["runId"].as_str().unwrap_or("").to_string();
+                                    let db_lock = db.lock().await;
+                                    let _ = db_lock.insert_task(&run_id, &pending.agent_id, &pending.message);
+                                    let _ = pending.tx.send(run_id).await;
+                                }
+                            }
+                        } else if res_id.starts_with("wait-") {
+                            let run_id = res_id.trim_start_matches("wait-");
+                            if v["ok"] == true {
+                                let payload = &v["payload"];
+                                if payload["status"] == "success" {
+                                    let db_lock = db.lock().await;
+                                    let _ = db_lock.update_task_status(run_id, "end");
+                                    if let Some(output) = payload["result"]["payload"]["output"].as_str() {
+                                        let _ = db_lock.append_task_output(run_id, output);
+                                    }
+                                }
+                            } else if v["error"] == "not_found" {
+                                let db_lock = db.lock().await;
+                                let _ = db_lock.update_task_status(run_id, "lost");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn load_identity() -> Result<(String, String, SigningKey), String> {
     let home = std::env::var("HOME").map_err(|e| e.to_string())?;
-    
-    // 1. 加载身份
     let device_auth_path = format!("{}/.openclaw/identity/device-auth.json", home);
-    let auth_json: serde_json::Value = serde_json::from_str(&fs::read_to_string(device_auth_path).map_err(|e| {
-        let err = format!("❌ 无法读取 device-auth.json: {}", e);
-        log_acp(&err);
-        err
-    })?).map_err(|e| e.to_string())?;
-    
-    let device_id = auth_json["deviceId"].as_str().ok_or("Missing deviceId")?;
-    let device_token = auth_json["tokens"]["operator"]["token"].as_str().ok_or("Missing token")?;
+    let auth_json: Value = serde_json::from_str(&fs::read_to_string(device_auth_path).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    let device_id = auth_json["deviceId"].as_str().ok_or("Missing deviceId")?.to_string();
+    let device_token = auth_json["tokens"]["operator"]["token"].as_str().ok_or("Missing token")?.to_string();
 
     let device_json_path = format!("{}/.openclaw/identity/device.json", home);
-    let device_data: serde_json::Value = serde_json::from_str(&fs::read_to_string(device_json_path).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    let device_data: Value = serde_json::from_str(&fs::read_to_string(device_json_path).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
     let private_key_pem = device_data["privateKeyPem"].as_str().ok_or("Missing privateKeyPem")?;
     let signing_key = SigningKey::from_pkcs8_pem(private_key_pem).map_err(|e| e.to_string())?;
 
-    // 2. 连接 WebSocket
-    let ws_url = "ws://127.0.0.1:18789/acp";
-    let (mut ws_stream, _) = connect_async(ws_url).await.map_err(|e| {
-        let err = format!("❌ WebSocket 连接失败: {}", e);
-        log_acp(&err);
-        err
-    })?;
-    
-    let mut response_text = String::new();
-    let mut run_id = String::new();
-    let mut task_completed = false;
-
-    let task_future = async {
-        while let Some(Ok(msg)) = ws_stream.next().await {
-            if let Message::Text(text) = msg {
-                log_acp(&format!("📥 [收]: {}", text));
-                let v: serde_json::Value = serde_json::from_str(&text).ok()?;
-                
-                if v["event"] == "connect.challenge" {
-                    let auth_msg = build_auth_msg(&v, device_id, device_token, &signing_key);
-                    log_acp("📤 发送认证请求");
-                    let _ = ws_stream.send(Message::Text(serde_json::to_string(&auth_msg).unwrap().into())).await;
-                    continue;
-                }
-
-                if v["type"] == "res" && v["id"] == "auth" {
-                    if v["ok"] == true {
-                        log_acp("✅ 认证成功");
-                        let idempotency_key = format!("jiling-{}", SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos());
-                        let agent_msg = json!({
-                            "type": "req", "method": "agent", "id": "run",
-                            "params": { "agentId": agent, "message": task.clone(), "deliver": false, "idempotencyKey": idempotency_key }
-                        });
-                        let _ = ws_stream.send(Message::Text(serde_json::to_string(&agent_msg).unwrap().into())).await;
-                    } else {
-                        log_acp(&format!("❌ 认证失败: {}", v["error"]));
-                    }
-                    continue;
-                }
-
-                if v["type"] == "res" && v["id"] == "run" {
-                    if v["ok"] == true {
-                        run_id = v["payload"]["runId"].as_str().unwrap_or("").to_string();
-                        log_acp(&format!("🚀 任务受理, runId: {}", run_id));
-                        let wait_msg = json!({
-                            "type": "req", "method": "agent.wait", "id": "wait",
-                            "params": { "runId": run_id.clone(), "timeoutMs": 45000 }
-                        });
-                        let _ = ws_stream.send(Message::Text(serde_json::to_string(&wait_msg).unwrap().into())).await;
-                    } else {
-                        log_acp(&format!("❌ 任务发起失败: {}", v["error"]));
-                    }
-                    continue;
-                }
-
-                if v["event"] == "agent" && v["payload"]["runId"] == run_id {
-                    let payload = &v["payload"];
-                    if payload["stream"] == "assistant" {
-                        if let Some(txt) = payload["data"]["text"].as_str() {
-                            response_text = txt.to_string();
-                        }
-                    }
-                    if payload["stream"] == "lifecycle" && (payload["data"]["phase"] == "end" || payload["data"]["phase"] == "error") {
-                        task_completed = true;
-                        break;
-                    }
-                }
-
-                if v["type"] == "res" && v["id"] == "wait" && v["ok"] == true {
-                    if v["payload"]["status"] == "success" {
-                        if let Some(out) = v["payload"]["result"]["payload"]["output"].as_str() {
-                            response_text = out.to_string();
-                        }
-                        task_completed = true;
-                        break;
-                    }
-                }
-            }
-        }
-        Some(())
-    };
-
-    match timeout(Duration::from_secs(50), task_future).await {
-        Ok(_) => {
-            if task_completed {
-                Ok(response_text)
-            } else {
-                let msg = format!("(阶段性回答): {}\n\n任务可能仍在进行中 (ID: {})", response_text, run_id);
-                log_acp(&msg);
-                Ok(msg)
-            }
-        },
-        Err(_) => {
-            let msg = format!("任务处理超时。当前获取: {}\n任务 ID: {}", response_text, run_id);
-            log_acp(&msg);
-            Ok(msg)
-        }
-    }
+    Ok((device_id, device_token, signing_key))
 }
 
-#[tauri::command]
-pub async fn query_agent_task(run_id: String) -> Result<String, String> {
-    log_acp(&format!("🔍 [Jiling] 查询任务进度: {}", run_id));
-    
-    let home = std::env::var("HOME").map_err(|e| e.to_string())?;
-    
-    // 1. 加载身份 (复用上面的逻辑)
-    let device_auth_path = format!("{}/.openclaw/identity/device-auth.json", home);
-    let auth_json: serde_json::Value = serde_json::from_str(&fs::read_to_string(device_auth_path).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-    let device_id = auth_json["deviceId"].as_str().ok_or("Missing deviceId")?;
-    let device_token = auth_json["tokens"]["operator"]["token"].as_str().ok_or("Missing token")?;
-
-    let device_json_path = format!("{}/.openclaw/identity/device.json", home);
-    let device_data: serde_json::Value = serde_json::from_str(&fs::read_to_string(device_json_path).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-    let private_key_pem = device_data["privateKeyPem"].as_str().ok_or("Missing privateKeyPem")?;
-    let signing_key = SigningKey::from_pkcs8_pem(private_key_pem).map_err(|e| e.to_string())?;
-
-    let ws_url = "ws://127.0.0.1:18789/acp";
-    let (mut ws_stream, _) = connect_async(ws_url).await.map_err(|e| e.to_string())?;
-    
-    let mut response_text = String::new();
-    let mut task_completed = false;
-
-    let query_future = async {
-        while let Some(Ok(msg)) = ws_stream.next().await {
-            if let Message::Text(text) = msg {
-                log_acp(&format!("📥 [查询-收]: {}", text));
-                let v: serde_json::Value = serde_json::from_str(&text).ok()?;
-                
-                if v["event"] == "connect.challenge" {
-                    let auth_msg = build_auth_msg(&v, device_id, device_token, &signing_key);
-                    let _ = ws_stream.send(Message::Text(serde_json::to_string(&auth_msg).unwrap().into())).await;
-                    continue;
-                }
-
-                if v["type"] == "res" && v["id"] == "auth" && v["ok"] == true {
-                    // 发起 wait 来查询已有的 runId
-                    let wait_msg = json!({
-                        "type": "req", "method": "agent.wait", "id": "query_wait",
-                        "params": { "runId": run_id.clone(), "timeoutMs": 15000 }
-                    });
-                    let _ = ws_stream.send(Message::Text(serde_json::to_string(&wait_msg).unwrap().into())).await;
-                    continue;
-                }
-
-                if v["event"] == "agent" && v["payload"]["runId"] == run_id {
-                    if v["payload"]["stream"] == "assistant" {
-                        if let Some(txt) = v["payload"]["data"]["text"].as_str() {
-                            response_text = txt.to_string();
-                        }
-                    }
-                    if v["payload"]["stream"] == "lifecycle" && (v["payload"]["data"]["phase"] == "end" || v["payload"]["data"]["phase"] == "error") {
-                        task_completed = true;
-                        break;
-                    }
-                }
-
-                if v["type"] == "res" && v["id"] == "query_wait" && v["ok"] == true {
-                    if let Some(out) = v["payload"]["result"]["payload"]["output"].as_str() {
-                        response_text = out.to_string();
-                        task_completed = true;
-                        break;
-                    }
-                }
-            }
-        }
-        Some(())
-    };
-
-    match timeout(Duration::from_secs(20), query_future).await {
-        Ok(_) => Ok(response_text),
-        Err(_) => {
-            if response_text.is_empty() {
-                Ok("任务仍在思考中，暂无结果。".to_string())
-            } else {
-                Ok(format!("(最新进展): {}", response_text))
-            }
-        }
-    }
-}
-
-fn build_auth_msg(v: &serde_json::Value, device_id: &str, device_token: &str, signing_key: &SigningKey) -> serde_json::Value {
+fn build_auth_msg(v: &Value, device_id: &str, device_token: &str, signing_key: &SigningKey) -> Value {
     let nonce = v["payload"]["nonce"].as_str().unwrap_or("");
     let ts = v["payload"]["ts"].as_i64().unwrap_or(0);
     let sign_payload = format!("v3|{}|node-host|node|operator|operator.admin,operator.read,operator.write|{}|{}|{}|darwin|desktop", 
@@ -241,4 +237,26 @@ fn build_auth_msg(v: &serde_json::Value, device_id: &str, device_token: &str, si
             "auth": { "deviceToken": device_token }
         }
     })
+}
+
+fn timestamp_ns() -> u128 {
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+}
+
+// Tauri Commands
+#[tauri::command]
+pub async fn execute_agent_acp_task(
+    state: tauri::State<'_, Arc<GlobalAcpManager>>,
+    agent: String,
+    task: String
+) -> Result<String, String> {
+    state.run_task(agent, task).await
+}
+
+#[tauri::command]
+pub async fn abort_agent_task(
+    state: tauri::State<'_, Arc<GlobalAcpManager>>,
+    run_id: String
+) -> Result<(), String> {
+    state.abort_task(run_id).await
 }

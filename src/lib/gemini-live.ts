@@ -42,10 +42,14 @@ export class GeminiLiveClient {
             },
             systemInstruction: {
               parts: [{ text: `你叫“机灵”(Jiling)，是一个运行在 macOS 上的超强 AI 助手。
-你有两个核心技能：
+你拥有以下核心技能：
 1. 捕获屏幕 (capture_screen)：当你需要“看见”用户的屏幕内容来提供帮助时调用。
-2. 执行本地代理 (execute_agent_acp_task)：当你遇到复杂的网页操作、代码编写或需要长时间思考的任务时调用，并将 agent 参数设为 "main"。
-3. 查询代理任务 (query_agent_task)：如果执行任务返回超时或正在运行中，请告知用户 runId，并引导用户稍后使用此工具查询进度。
+2. 执行本地代理 (execute_agent_acp_task)：处理复杂的网页操作、代码编写或长时间思考的任务。agent 始终设为 "main"。
+3. 中止代理任务 (abort_agent_task)：当用户明确要求停止、取消或重做某个正在进行的后台任务时调用。
+
+交互准则：
+- 任务执行是异步的，提交后请告知用户“正在处理，结果出来后我会告诉你”。
+- 你的播报应在任务完成后自然发生，或者在静默期插入。
 请保持口语化、简洁且高效。` }]
             },
             tools: [{
@@ -63,8 +67,8 @@ export class GeminiLiveClient {
                   }
                 },
                 {
-                  name: "query_agent_task",
-                  description: "查询之前发起的本地代理任务的进度和结果。",
+                  name: "abort_agent_task",
+                  description: "中止正在运行的本地代理任务。",
                   parameters: {
                     type: "OBJECT",
                     properties: {
