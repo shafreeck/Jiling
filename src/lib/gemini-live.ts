@@ -78,7 +78,7 @@ export class GeminiLiveClient {
 请保持口语化、简洁且高效。` }]
             },
             tools: [{
-              function_declarations: [
+              functionDeclarations: [
                 {
                   name: "execute_agent_acp_task",
                   description: "执行本地 AI 代理处理复杂任务。",
@@ -130,14 +130,16 @@ export class GeminiLiveClient {
           }
           const response = JSON.parse(data);
           
-          // 3. 精准捕获 Token (定死为 sessionToken)
+          // 3. 增强 Token 捕获逻辑 (同时兼容 sessionToken 和 newHandle)
           const update = response.sessionResumptionUpdate;
-          if (update && update.sessionToken) {
-            const token = update.sessionToken;
-            const oldToken = GeminiLiveClient.getResumptionToken();
-            if (token !== oldToken) {
-              GeminiLiveClient.setResumptionToken(token);
-              this.onLog(`[协议] ✅ 已更新会话记忆锚点 (Token Saved)`);
+          if (update) {
+            const token = update.sessionToken || update.newHandle || update.new_handle;
+            if (token) {
+              const oldToken = GeminiLiveClient.getResumptionToken();
+              if (token !== oldToken) {
+                GeminiLiveClient.setResumptionToken(token);
+                this.onLog(`[协议] ✅ 记忆锚点已同步 (Token: ${token.substring(0, 10)}...)`);
+              }
             }
           }
 
