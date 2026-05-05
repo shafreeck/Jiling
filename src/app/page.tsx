@@ -12,6 +12,7 @@ class AudioStreamer {
   private context: AudioContext;
   private nextPlayTime: number = 0;
   private activeSources: Set<AudioBufferSourceNode> = new Set();
+  public onAllEnded?: () => void;
 
   constructor(context: AudioContext) {
     this.context = context;
@@ -44,6 +45,9 @@ class AudioStreamer {
     this.activeSources.add(source);
     source.onended = () => {
       this.activeSources.delete(source);
+      if (this.activeSources.size === 0 && this.onAllEnded) {
+        this.onAllEnded();
+      }
     };
   }
 
@@ -102,6 +106,9 @@ export default function JilingPage() {
       
       globalContext = new AudioContext({ sampleRate: 24000 });
       globalStreamer = new AudioStreamer(globalContext);
+      globalStreamer.onAllEnded = () => {
+        setStatus(prev => prev === "speaking" ? "listening" : prev);
+      };
 
       globalClient = new GeminiLiveClient(
         (msg) => handleGeminiMessage(msg),

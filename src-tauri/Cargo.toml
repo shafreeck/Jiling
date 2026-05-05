@@ -1,5 +1,6 @@
 [package]
 name = "jiling"
+default-run = "jiling"
 version = "0.1.0"
 description = "机灵 (Jiling) - AI Voice Agent"
 authors = ["you"]
@@ -16,6 +17,10 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2.6.0", features = [] }
+
+[[bin]]
+name = "test_handshake"
+path = "../scratch/test_handshake.rs"
 
 [dependencies]
 serde_json = "1.0"

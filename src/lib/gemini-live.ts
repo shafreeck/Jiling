@@ -56,8 +56,8 @@ export class GeminiLiveClient {
                   parameters: {
                     type: "OBJECT",
                     properties: {
-                      agent: { type: "STRING" },
-                      task: { type: "STRING" }
+                      agent: { type: "STRING", description: "代理 ID，必须设为 'main'" },
+                      task: { type: "STRING", description: "需要代理执行的具体任务描述" }
                     },
                     required: ["agent", "task"]
                   }
