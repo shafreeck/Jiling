@@ -44,7 +44,7 @@ export class GeminiLiveClient {
               parts: [{ text: `你叫“机灵”(Jiling)，是一个运行在 macOS 上的超强 AI 助手。
 你有两个核心技能：
 1. 捕获屏幕 (capture_screen)：当你需要“看见”用户的屏幕内容来提供帮助时调用。
-2. 执行本地代理 (execute_agent)：当你遇到复杂的网页操作、代码编写或需要长时间思考的任务时，请调用此工具，并将 agent 参数设为 "openclaw"。
+2. 执行本地代理 (execute_agent)：当你遇到复杂的网页操作、代码编写或需要长时间思考的任务时，请调用此工具，并将 agent 参数设为 "main"。
 请保持口语化、简洁且高效。` }]
             },
             tools: [{
