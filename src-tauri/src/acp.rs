@@ -7,11 +7,7 @@ use serde_json::json;
 
 #[tauri::command]
 pub async fn execute_agent_acp_task(agent: String, task: String) -> Result<String, String> {
-    let mut agent_id = agent.clone();
-    if agent_id == "openclaw" || agent_id.is_empty() {
-        agent_id = "main".to_string();
-    }
-    println!("🚀 [Jiling] 正在发起 ACP 任务 (Agent: {}): {}", agent_id, task);
+    println!("🚀 [Jiling] 正在发起 ACP 任务 (Agent: {}): {}", agent, task);
     
     let home = std::env::var("HOME").map_err(|e| e.to_string())?;
     
@@ -38,13 +34,12 @@ pub async fn execute_agent_acp_task(agent: String, task: String) -> Result<Strin
     let scopes = vec!["operator.admin", "operator.read", "operator.write"];
     let scopes_str = scopes.join(",");
 
-    let mut response_text = String::from("任务执行超时，请稍后查询结果。");
+    let mut response_text = String::from("任务处理中，但未及时返回。");
 
     while let Some(Ok(msg)) = ws_stream.next().await {
         if let Message::Text(text) = msg {
             let v: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
             
-            // A. 处理 Challenge
             if v["event"] == "connect.challenge" {
                 let nonce = v["payload"]["nonce"].as_str().unwrap_or("");
                 let ts = v["payload"]["ts"].as_i64().unwrap_or(0);
@@ -69,14 +64,13 @@ pub async fn execute_agent_acp_task(agent: String, task: String) -> Result<Strin
                 continue;
             }
 
-            // B. 认证成功后发起任务
             if v["type"] == "res" && v["id"] == "auth" {
                 if v["ok"].as_bool().unwrap_or(false) {
                     let idempotency_key = format!("jiling-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos());
                     let agent_msg = json!({
                         "type": "req", "method": "agent", "id": "agent_run",
                         "params": { 
-                            "agentId": agent_id, 
+                            "agentId": agent, 
                             "message": task.clone(),
                             "deliver": false,
                             "idempotencyKey": idempotency_key
@@ -89,7 +83,6 @@ pub async fn execute_agent_acp_task(agent: String, task: String) -> Result<Strin
                 continue;
             }
 
-            // C. 任务已受理，获取 runId 并调用限时 wait
             if v["type"] == "res" && v["id"] == "agent_run" {
                 if v["ok"].as_bool().unwrap_or(false) {
                     let run_id = v["payload"]["runId"].as_str().unwrap_or("").to_string();
@@ -99,7 +92,7 @@ pub async fn execute_agent_acp_task(agent: String, task: String) -> Result<Strin
                         "type": "req", "method": "agent.wait", "id": "agent_wait",
                         "params": {
                             "runId": run_id,
-                            "timeoutMs": 40000 // 限制在 40s 内，留 20s 余量给 Gemini
+                            "timeoutMs": 45000 // 稳健起见，限制在 45s
                         }
                     });
                     ws_stream.send(Message::Text(serde_json::to_string(&wait_msg).unwrap().into())).await.map_err(|e| e.to_string())?;
@@ -109,7 +102,6 @@ pub async fn execute_agent_acp_task(agent: String, task: String) -> Result<Strin
                 continue;
             }
 
-            // D. 获取执行结果（可能是超时响应）
             if v["type"] == "res" && v["id"] == "agent_wait" {
                 if v["ok"].as_bool().unwrap_or(false) {
                     if let Some(output) = v["payload"]["result"]["payload"]["output"].as_str() {
@@ -117,14 +109,13 @@ pub async fn execute_agent_acp_task(agent: String, task: String) -> Result<Strin
                     } else if let Some(summary) = v["payload"]["result"]["meta"]["terminalSummary"].as_str() {
                         response_text = summary.to_string();
                     } else {
-                        response_text = format!("任务状态: {}", v["payload"]["status"]);
+                        response_text = format!("任务已完成，状态: {}", v["payload"]["status"]);
                     }
                     println!("🎊 [Jiling] 任务执行完成");
                 } else {
-                    // 如果网关返回超时，我们告知用户可以后续查询
                     let run_id = v["payload"]["runId"].as_str().unwrap_or("未知");
-                    response_text = format!("任务执行较慢，仍在后台运行中。你可以稍后使用 query_agent_task 工具并提供 runId: {} 来查询结果。", run_id);
-                    println!("⏳ [Jiling] 任务执行超时，转入后台");
+                    response_text = format!("任务执行较慢，仍在后台运行中。请告知用户任务 ID 为 {}，并引导用户 10 秒后问你“结果出来了没”来获取最终答案。", run_id);
+                    println!("⏳ [Jiling] 任务进入后台，runId: {}", run_id);
                 }
                 break;
             }
@@ -163,7 +154,7 @@ pub async fn query_agent_task(run_id: String) -> Result<String, String> {
     let scopes = vec!["operator.admin", "operator.read", "operator.write"];
     let scopes_str = scopes.join(",");
 
-    let mut response_text = String::from("任务仍在运行中，请稍后再试。");
+    let mut response_text = String::from("任务仍在运行中，Agent 还在思考，请再等几秒再问我。");
 
     while let Some(Ok(msg)) = ws_stream.next().await {
         if let Message::Text(text) = msg {
@@ -199,7 +190,7 @@ pub async fn query_agent_task(run_id: String) -> Result<String, String> {
                         "type": "req", "method": "agent.wait", "id": "query_wait",
                         "params": {
                             "runId": run_id.clone(),
-                            "timeoutMs": 5000 // 查询请求只等 5s，不等就返回当前状态
+                            "timeoutMs": 10000 // 查询请求等 10s
                         }
                     });
                     ws_stream.send(Message::Text(serde_json::to_string(&wait_msg).unwrap().into())).await.map_err(|e| e.to_string())?;
@@ -213,11 +204,13 @@ pub async fn query_agent_task(run_id: String) -> Result<String, String> {
                 if v["ok"].as_bool().unwrap_or(false) {
                     if let Some(output) = v["payload"]["result"]["payload"]["output"].as_str() {
                         response_text = output.to_string();
+                    } else if let Some(summary) = v["payload"]["result"]["meta"]["terminalSummary"].as_str() {
+                        response_text = summary.to_string();
                     } else {
-                        response_text = format!("任务当前状态: {}", v["payload"]["status"]);
+                        response_text = format!("任务完成。状态: {}", v["payload"]["status"]);
                     }
                 } else {
-                    response_text = format!("任务仍未完成。状态: {}", v["payload"]["status"]);
+                    response_text = format!("任务仍未出结果，请再多等一会儿。当前状态: {}", v["payload"]["status"]);
                 }
                 break;
             }
