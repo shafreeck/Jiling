@@ -50,7 +50,7 @@ export class GeminiLiveClient {
             tools: [{
               functionDeclarations: [
                 {
-                  name: "execute_agent",
+                  name: "execute_agent_acp_task",
                   description: "执行本地 AI 代理处理复杂任务。",
                   parameters: {
                     type: "OBJECT",
