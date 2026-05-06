@@ -23,8 +23,14 @@ export type ProviderOption = {
 };
 
 const VOICES = [
-  { id: "default_male", name: "✨ 智能原生 (地道男声)" },
-  { id: "default_female", name: "✨ 智能原生 (地道女声)" },
+  { id: "Aoede", name: "Aoede (知性女声 - 推荐)" },
+  { id: "Leda", name: "Leda (活力女声 - 推荐)" },
+  { id: "Kore", name: "Kore (坚定女声)" },
+  { id: "Achernar", name: "Achernar (温柔女声)" },
+  { id: "Charon", name: "Charon (博学男声 - 推荐)" },
+  { id: "Sadaltager", name: "Sadaltager (深沉男声)" },
+  { id: "Puck", name: "Puck (活力男声)" },
+  { id: "Fenrir", name: "Fenrir (稳重男声)" },
 ];
 
 type AcpEvent = {
@@ -143,7 +149,7 @@ export default function JilingPage() {
   const [logs, setLogs] = useState<string[]>(["系统就绪，等待语音指令..."]);
   const [providers, setProviders] = useState<ProviderOption[]>([]);
   const [selectedProviderId, setSelectedProviderId] = useState<string>("openclaw");
-  const [selectedVoice, setSelectedVoice] = useState<string>("default_male");
+  const [selectedVoice, setSelectedVoice] = useState<string>("Aoede");
 
   const selectedVoiceRef = useRef(selectedVoice);
   const selectedProviderIdRef = useRef(selectedProviderId);
