@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import type { FunctionResponse } from "@google/genai";
-import { Mic, MicOff, RotateCw, Terminal, Eraser } from "lucide-react";
+import { Mic, MicOff, RotateCw, Activity, Eraser } from "lucide-react";
 import { SmartOrb } from "@/components/SmartOrb";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -499,15 +499,6 @@ export default function JilingPage() {
 
           <Button
             disabled={isBusy}
-            onClick={isConnected ? forceReconnect : runSelfTest}
-            title={isConnected ? "强制重连" : "Live 恢复自检"}
-            className="h-12 w-12 rounded-full bg-yellow-500/10 text-yellow-300 border border-yellow-500/20 hover:bg-yellow-500/20"
-          >
-            {isConnected ? <RotateCw className="h-5 w-5" /> : <Terminal className="h-5 w-5" />}
-          </Button>
-
-          <Button
-            disabled={isBusy}
             onClick={isConnected ? stopConversation : startConversation}
             className={`h-16 w-16 rounded-full ${
               isConnected
@@ -516,6 +507,15 @@ export default function JilingPage() {
             }`}
           >
             {isConnected ? <MicOff className="h-7 w-7" /> : <Mic className="h-7 w-7" />}
+          </Button>
+
+          <Button
+            disabled={isBusy}
+            onClick={isConnected ? forceReconnect : runSelfTest}
+            title={isConnected ? "强制重连" : "Live 恢复自检"}
+            className="h-12 w-12 rounded-full bg-yellow-500/10 text-yellow-300 border border-yellow-500/20 hover:bg-yellow-500/20"
+          >
+            {isConnected ? <RotateCw className="h-5 w-5" /> : <Activity className="h-5 w-5" />}
           </Button>
         </div>
       </section>
