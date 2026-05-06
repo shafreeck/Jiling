@@ -1,18 +1,21 @@
+import { GoogleGenAI } from "@google/genai";
 import { invoke } from "@tauri-apps/api/core";
 
 export class GeminiLiveClient {
-  public ws: WebSocket | null = null;
-  private url: string;
+  private ai: any;
+  private session: any;
   private model: string;
-  private onMessage: (msg: any) => void;
-  private onError: (err: any) => void;
-  private onLog: (msg: string) => void;
+  private onMessage: (message: any) => void;
+  private onError: (error: any) => void;
+  private onLog: (log: string) => void;
   private onClose: () => void;
 
+  private static resumptionToken: string | null = null;
+
   constructor(
-    onMessage: (msg: any) => void,
-    onError: (err: any) => void,
-    onLog: (msg: string) => void,
+    onMessage: (message: any) => void,
+    onError: (error: any) => void,
+    onLog: (log: string) => void,
     onClose: () => void,
     model: string = "gemini-3.1-flash-live-preview"
   ) {
@@ -21,209 +24,166 @@ export class GeminiLiveClient {
     this.onLog = onLog;
     this.onClose = onClose;
     this.model = model;
-    this.url = ""; // Will be set in connect()
+    this.ai = null;
   }
 
-  // 静态 Token 存储，优先从本地存储恢复 (兼容原有命名)
-  private static getResumptionToken(): string | null {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('gemini_resumption_token');
+  static getResumptionToken(): string | null {
+    if (typeof window !== 'undefined' && !GeminiLiveClient.resumptionToken) {
+      GeminiLiveClient.resumptionToken = localStorage.getItem("gemini_resumption_token");
     }
-    return null;
+    return GeminiLiveClient.resumptionToken;
   }
 
-  private static setResumptionToken(token: string | null) {
+  static setResumptionToken(token: string) {
+    GeminiLiveClient.resumptionToken = token;
     if (typeof window !== 'undefined') {
-      if (token) {
-        localStorage.setItem('gemini_resumption_token', token);
-      } else {
-        localStorage.removeItem('gemini_resumption_token');
-      }
+      localStorage.setItem("gemini_resumption_token", token);
     }
   }
 
   async connect() {
     try {
+      this.onLog("[SDK] 正在建立连接...");
       const apiKey = await invoke<string>("get_api_key");
-      if (!apiKey) throw new Error("API Key 为空");
-
-      // 锁定原有的 v1beta URL
-      this.url = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${apiKey}`;
       
-      this.onLog(`正在尝试连接 (API Key 已就绪)...`);
-      this.ws = new WebSocket(this.url);
+      if (!apiKey) {
+        throw new Error("未能从后端获取到有效的 GEMINI_API_KEY");
+      }
+      
+      this.ai = new GoogleGenAI({ apiKey });
 
-      this.ws.onopen = () => {
-        this.onLog("WebSocket 已连接");
-        
-        const currentToken = GeminiLiveClient.getResumptionToken();
-        if (currentToken) {
-          this.onLog(`[协议] 尝试携带 Handle 续接会话: ${currentToken.substring(0, 15)}...`);
-        }
-        const configMessage = {
-            setup: {
-              model: `models/${this.model}`,
-              generationConfig: {
-                responseModalities: ["AUDIO"],
-              },
-              // 🚨 尝试使用最标准的蛇形字段名和 token 键
-              session_resumption: currentToken ? {
-                token: currentToken
-              } : {},
-              systemInstruction: {
-              parts: [{ text: `你叫“机灵”(Jiling)，是一个运行在 macOS 上的超强 AI 助手。
+      const currentToken = GeminiLiveClient.getResumptionToken();
+      if (currentToken) {
+        this.onLog(`[SDK] 携带续接令牌 (Token: ${currentToken.substring(0, 10)}...)`);
+      }
+
+      const config: any = {
+        model: this.model,
+        config: {
+          responseModalities: ["AUDIO"],
+          systemInstruction: {
+            parts: [{ text: `你叫“机灵”(Jiling)，是一个运行在 macOS 上的超强 AI 助手。
 交互准则：
 - 任务执行是异步的。当你调用 execute_agent_acp_task 后，请仅告知用户“已提交后台处理，请稍等”，**绝对禁止**编造结果。
 - 任务完成后，系统会向你发送一条包含结果的系统更新消息。届时请你根据该消息内容自然地向用户播报。
 请保持口语化、简洁且高效。` }]
-            },
-            tools: [{
-              functionDeclarations: [
-                {
-                  name: "execute_agent_acp_task",
-                  description: "执行本地 AI 代理处理复杂任务。",
-                  parameters: {
-                    type: "OBJECT",
-                    properties: {
-                      agent: { type: "STRING", description: "代理 ID，必须设为 'main'" },
-                      task: { type: "STRING", description: "需要代理执行的具体任务描述" }
-                    },
-                    required: ["agent", "task"]
-                  }
-                },
-                {
-                  name: "abort_agent_task",
-                  description: "中止正在运行的本地代理任务。",
-                  parameters: {
-                    type: "OBJECT",
-                    properties: {
-                      run_id: { type: "STRING", description: "任务的 runId" }
-                    },
-                    required: ["run_id"]
-                  }
-                },
-                {
-                  name: "capture_screen",
-                  description: "捕获当前屏幕截图。",
-                  parameters: { type: "OBJECT", properties: {} }
+          },
+          tools: [{
+            functionDeclarations: [
+              {
+                name: "execute_agent_acp_task",
+                description: "执行本地 AI 代理处理复杂任务。",
+                parameters: {
+                  type: "OBJECT",
+                  properties: {
+                    agent: { type: "STRING", description: "代理 ID，必须设为 'main'" },
+                    task: { type: "STRING", description: "需要代理执行的具体任务描述" }
+                  },
+                  required: ["agent", "task"]
                 }
-              ]
-            }]
-          }
-        };
-
-        if (currentToken) {
-          this.onLog(`[协议] 尝试携带 Token 续接会话: ${currentToken.substring(0, 15)}...`);
-        } else {
-          this.onLog("正在初始化全新会话...");
-        }
-
-        this.send(configMessage);
-        this.onLog("配置消息已发送 (Stability Mode)");
-      };
-
-      this.ws.onmessage = async (event) => {
-        try {
-          let data = event.data;
-          if (data instanceof Blob) {
-            data = await data.text();
-          }
-          const response = JSON.parse(data);
-          
-          // 3. 增强 Token 捕获逻辑 (同时兼容 sessionToken 和 newHandle)
-          const update = response.sessionResumptionUpdate;
-          if (update) {
-            const token = update.sessionToken || update.newHandle || update.new_handle;
-            if (token) {
-              const oldToken = GeminiLiveClient.getResumptionToken();
-              if (token !== oldToken) {
-                GeminiLiveClient.setResumptionToken(token);
-                this.onLog(`[协议] ✅ 记忆锚点已同步 (Token: ${token.substring(0, 10)}...)`);
+              },
+              {
+                name: "abort_agent_task",
+                description: "中止正在运行的本地代理任务。",
+                parameters: {
+                  type: "OBJECT",
+                  properties: {
+                    run_id: { type: "STRING", description: "任务的 runId" }
+                  },
+                  required: ["run_id"]
+                }
               }
-            }
-          }
-
-          // 4. 监听 GoAway 信号
-          if (response.serverContent?.goAway) {
-            this.onLog("[协议] 收到服务器 GoAway 信号，主动触发续接...");
-            this.ws?.close(); 
-          }
-
-          this.onMessage(response);
-        } catch (e) {
-          this.onLog(`解析消息失败: ${e}`);
+            ]
+          }],
+          sessionResumption: currentToken ? {
+            handle: currentToken
+          } : {}
         }
       };
 
-      this.ws.onerror = (error) => {
-        this.onError(error);
-      };
+      this.session = await this.ai.live.connect({
+        ...config,
+        callbacks: {
+          onopen: () => {
+            this.onLog("[SDK] 会话已就绪");
+          },
+          onmessage: (message: any) => {
+            this.handleServerMessage(message);
+          },
+          onerror: (error: any) => {
+            this.onLog(`[SDK] 通信异常: ${error.message || error}`);
+            this.onError(error);
+          },
+          onclose: (event: any) => {
+            this.onLog(`[SDK] 会话已关闭: Code=${event.code}`);
+            this.onClose();
+          }
+        }
+      });
 
-      this.ws.onclose = (event) => {
-        this.onLog(`连接已关闭: Code=${event.code}, Reason=${event.reason || "无"}`);
-        this.onClose();
-        this.onError(new Error(`WebSocket Closed: ${event.code}`));
-      };
-
-    } catch (err) {
-      this.onError(err);
+    } catch (error: any) {
+      this.onLog(`[SDK] 连接失败: ${error.message || error}`);
+      this.onError(error);
+      throw error;
     }
   }
 
-  private send(data: any) {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(data));
+  private handleServerMessage(message: any) {
+    if (message.sessionResumptionUpdate) {
+      const handle = message.sessionResumptionUpdate.newHandle;
+      if (handle) {
+        GeminiLiveClient.setResumptionToken(handle);
+        // 静音更新日志
+      }
     }
+
+    if (message.serverContent?.goAway) {
+      this.onLog("[SDK] 收到服务器重定向信号 (GoAway)");
+    }
+
+    this.onMessage(message);
   }
 
   sendAudio(base64Data: string) {
-    this.send({
-      realtimeInput: {
+    if (!this.session) return;
+    try {
+      this.session.sendRealtimeInput({
         audio: {
-          data: base64Data,
-          mimeType: "audio/pcm;rate=16000"
+          mimeType: "audio/pcm;rate=16000",
+          data: base64Data
         }
-      }
+      });
+    } catch (e) {
+      console.error("[SDK] 发送音频失败:", e);
+    }
+  }
+
+  sendToolResponse(responses: any[]) {
+    if (!this.session) return;
+    this.session.sendToolResponse({
+      functionResponses: responses
     });
   }
 
   sendInterruption() {
-    this.send({
-      clientContent: {
-        turns: [],
-        turnComplete: false
-      }
-    });
-  }
-
-  sendToolResponse(functionResponses: any[]) {
-    this.send({
-      toolResponse: {
-        functionResponses: functionResponses
-      }
-    });
+    // 打断当前生成：SDK 会在发送新输入时自动处理大部分情况
   }
 
   sendSystemUpdate(text: string) {
-    this.send({
-      clientContent: {
-        turns: [{
-          role: "user",
-          parts: [{ text: `【重要任务反馈】${text}\n请根据结果向用户播报。` }]
-        }],
-        turnComplete: true
-      }
+    if (!this.session) return;
+    this.session.sendClientContent({
+      turns: [{
+        role: "user",
+        parts: [{ text }]
+      }],
+      turnComplete: true
     });
   }
 
   disconnect() {
-    if (this.ws) {
-      this.ws.onopen = null;
-      this.ws.onmessage = null;
-      this.ws.onerror = null;
-      this.ws.onclose = null;
-      this.ws.close();
-      this.ws = null;
+    if (this.session) {
+      this.session.close();
+      this.session = null;
     }
   }
 }

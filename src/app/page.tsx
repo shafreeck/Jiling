@@ -112,27 +112,18 @@ export default function JilingPage() {
 
       globalClient = new GeminiLiveClient(
         (msg) => handleGeminiMessage(msg),
-        (err) => {
-          // 仅打印日志，不直接触发重连，重连由 onclose 统一处理
-          addLog(`通信异常: ${err.message || err}`);
-        },
-        (log) => addLog(log)
+        (err) => addLog(`通信异常: ${err.message || err}`),
+        (log) => addLog(log),
+        () => {
+          // 只要不是手动点“停止”导致的关闭，且处于连接状态，就尝试重连
+          if (statusRef.current !== "idle") {
+            addLog(`[系统] 连接断开，正在尝试自动续接...`);
+            setTimeout(() => startInteraction(), 1000);
+          }
+        }
       );
 
       await globalClient.connect();
-      
-      // 获取内部 ws 引用以监听关闭
-      const ws = (globalClient as any).ws as WebSocket;
-      if (ws) {
-        ws.addEventListener("close", (e) => {
-          // 只要不是我们手动点“停止”导致的关闭，且处于连接状态，就尝试重连
-          if (statusRef.current !== "idle") {
-            addLog(`[系统] 连接已断开 (Code ${e.code})，正在自动续接...`);
-            setTimeout(() => startInteraction(), 1000);
-          }
-        });
-      }
-
       globalClient.sendInterruption(); 
       setIsConnected(true);
       setStatus("listening");
@@ -152,8 +143,8 @@ export default function JilingPage() {
         for (let i = 0; i < inputData.length; i++) sum += inputData[i] * inputData[i];
         setVolume(Math.sqrt(sum / inputData.length));
 
-        // 如果在说话，静音采集发送
-        if (statusRef.current === "speaking" || statusRef.current === "thinking") return;
+        // 🚨 核心修复：移除 speaking 拦截，允许语音打断信号上传
+        if (statusRef.current === "thinking") return;
 
         const pcm16 = new Int16Array(Math.floor(inputData.length * 16000 / 24000));
         for (let i = 0, j = 0; i < inputData.length && j < pcm16.length; i += 1.5, j++) {
@@ -304,47 +295,106 @@ export default function JilingPage() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-[#0a0a0b] text-white flex flex-col items-center justify-between p-8 overflow-hidden">
-      <div className="w-full flex justify-between items-center z-20">
-        <div className="flex items-center gap-2">
-          <div className={`w-3 h-3 rounded-full ${isConnected ? "bg-green-500" : "bg-blue-500"} animate-pulse`} />
-          <h1 className="text-xl font-light tracking-widest uppercase text-white">Jiling / 机灵</h1>
-        </div>
-        <Button variant="ghost" size="icon" className="rounded-full hover:bg-white/10">
-          <Settings className="w-5 h-5 text-slate-400" />
-        </Button>
-      </div>
-
-      <div className="flex-1 flex flex-col items-center justify-center gap-12 z-10">
-        <SmartOrb volume={volume} status={status} />
-        
-        <div className="flex flex-col items-center gap-4">
-          <div className="px-6 py-2 rounded-full border border-white/10 bg-white/5 backdrop-blur-md">
-            <p className="text-sm font-medium text-blue-300">
-              {status === "idle" ? "点击开始交互" : 
-               status === "listening" ? "正在倾听..." : 
-               status === "thinking" ? "正在执行任务..." : "正在为您解答"}
-            </p>
+    <main className="h-screen w-full bg-[#0a0a0c] bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-blue-900/20 via-transparent to-transparent text-white flex flex-col p-6 overflow-hidden font-sans">
+      
+      {/* 顶栏：状态与名称 */}
+      <header className="flex justify-between items-center z-30 mb-4 shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <div className={`w-3 h-3 rounded-full ${isConnected ? "bg-green-500" : "bg-blue-600"} shadow-[0_0_15px_rgba(59,130,246,0.5)]`} />
+            {isConnected && <div className="absolute inset-0 w-3 h-3 rounded-full bg-green-400 animate-ping" />}
           </div>
-          
-          <Button 
-            disabled={isStarting}
-            onClick={isConnected ? () => window.location.reload() : startInteraction}
-            className={`w-16 h-16 rounded-full transition-all duration-500 ${
-              isConnected ? "bg-red-500/20 border-red-500/50 hover:bg-red-500/30" : "bg-blue-500 hover:bg-blue-600"
-            }`}
-          >
-            {isConnected ? <MicOff className="w-8 h-8" /> : <Mic className="w-8 h-8" />}
-          </Button>
+          <h1 className="text-lg font-light tracking-[0.3em] uppercase bg-clip-text text-transparent bg-gradient-to-r from-white to-white/40">
+            Jiling / 机灵
+          </h1>
+        </div>
+        <div className="flex gap-2">
+           <Button variant="ghost" size="icon" className="rounded-full hover:bg-white/5 text-slate-400">
+             <Settings className="w-4 h-4" />
+           </Button>
+        </div>
+      </header>
+
+      {/* 核心内容区：Orb 与控制 */}
+      <div className="flex-1 relative flex flex-col items-center justify-center gap-10 min-h-0 pb-12">
+        {/* 背景光晕 */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-blue-600/10 rounded-full blur-[120px] pointer-events-none" />
+        
+        <div className="relative z-10 transform scale-110">
+          <SmartOrb volume={volume} status={status} />
+        </div>
+
+        {/* 状态指示器与控制条 */}
+        <div className="z-20 flex flex-col items-center gap-6">
+          <div className="px-6 py-1.5 rounded-full border border-white/5 bg-white/[0.03] backdrop-blur-md shadow-inner">
+            <span className="text-xs font-medium tracking-wider text-blue-200/80 uppercase">
+              {status === "idle" ? "准备就绪" : 
+               status === "listening" ? "正在倾听" : 
+               status === "thinking" ? "正在执行" : "正在为您解答"}
+            </span>
+          </div>
+
+          {/* 控制条 */}
+          <div className="flex items-center gap-6 p-2 rounded-full border border-white/10 bg-white/[0.02] backdrop-blur-2xl shadow-2xl">
+            <Button 
+              disabled={!isConnected}
+              onClick={() => {
+                if (globalClient?.ws) {
+                  addLog("[测试] 模拟连接中断，触发续接...");
+                  globalClient.ws.close();
+                }
+              }}
+              className="w-12 h-12 rounded-full bg-yellow-500/10 border border-yellow-500/20 hover:bg-yellow-500/20 text-yellow-500 transition-all active:scale-95 flex items-center justify-center"
+              title="强制重连测试"
+            >
+              <Terminal className="w-5 h-5" />
+            </Button>
+
+            <Button 
+              disabled={isStarting}
+              onClick={isConnected ? () => {
+                setIsConnected(false);
+                setStatus("idle");
+                globalClient?.disconnect();
+                addLog("交互已停止");
+              } : startInteraction}
+              className={`w-16 h-16 rounded-full transition-all duration-500 shadow-lg active:scale-90 flex items-center justify-center ${
+                isConnected 
+                ? "bg-red-500/20 border-2 border-red-500/40 hover:bg-red-500/30 text-red-400" 
+                : "bg-gradient-to-tr from-blue-600 to-indigo-500 hover:shadow-blue-500/20 border-none"
+              }`}
+            >
+              {isConnected ? <MicOff className="w-8 h-8" /> : <Mic className="w-8 h-8" />}
+            </Button>
+
+            <div className="w-12 h-12 rounded-full flex items-center justify-center text-slate-500">
+               <div className="w-1 h-1 rounded-full bg-current" />
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="w-full max-w-2xl h-48 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-4 flex flex-col gap-2 z-20">
-        <ScrollArea className="flex-1 font-mono text-[10px] leading-relaxed text-slate-300">
-          {logs.map((log, i) => <div key={i}>{log}</div>)}
-          <div ref={logEndRef} />
-        </ScrollArea>
-      </div>
+      {/* 日志面板 */}
+      <footer className="mt-auto z-30 shrink-0 pb-4">
+        <div className="w-full max-w-4xl mx-auto rounded-2xl border border-white/5 bg-black/40 backdrop-blur-xl overflow-hidden shadow-2xl">
+          <div className="px-4 py-2 border-b border-white/5 bg-white/[0.02] flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Console Output</span>
+            <div className="flex gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-slate-700" />
+              <div className="w-2 h-2 rounded-full bg-slate-700" />
+            </div>
+          </div>
+          <ScrollArea className="h-32 px-4 py-3 font-mono text-[11px] leading-relaxed text-slate-400 scrollbar-hide">
+            {logs.map((log, i) => (
+              <div key={i} className="mb-1 opacity-80 hover:opacity-100 transition-opacity">
+                <span className="text-blue-500/50 mr-2">›</span>
+                {log}
+              </div>
+            ))}
+            <div ref={logEndRef} />
+          </ScrollArea>
+        </div>
+      </footer>
     </main>
   );
 }
