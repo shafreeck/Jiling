@@ -86,6 +86,7 @@ export class AcpProviderAdapter implements AgentProviderAdapter {
         }
 
         return {
+          providerId: this.id,
           displayName,
           identityContext: identity || undefined,
           soulContext: soul || undefined,
@@ -100,7 +101,8 @@ export class AcpProviderAdapter implements AgentProviderAdapter {
     }
 
     return {
-      roleDescription: "用户本机上的默认 AI Agent。",
+      providerId: this.id,
+      roleDescription: "本地代理 Agent",
       speakingStyle: "自然、简洁、明确的中文。",
       memoryPolicy: "session_only",
       source: "default",

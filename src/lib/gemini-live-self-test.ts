@@ -226,7 +226,7 @@ async function runProductionClientTurn(client: GeminiLiveClient, pcm: Uint8Array
 
 async function runProductionClientSelfTest(rememberPcm: Uint8Array, askPcm: Uint8Array, log: LogFn) {
   log("[生产自检] 开始 GeminiLiveClient 闭环自检...");
-  GeminiLiveClient.clearStoredHandle();
+    GeminiLiveClient.clearStoredHandle("test-provider");
   let turnObserver: TurnObserver | null = null;
   const observeTurn: ObserveTurn = (observer) => {
     turnObserver = observer;
@@ -252,7 +252,7 @@ async function runProductionClientSelfTest(rememberPcm: Uint8Array, askPcm: Uint
   await first.connect();
   const firstResult = await runProductionClientTurn(first, rememberPcm, observeTurn);
   await first.closeGracefully(5000);
-  const handle = GeminiLiveClient.getStoredHandle();
+  const handle = GeminiLiveClient.getStoredHandle("test-provider");
   log(`[生产自检] 第一轮 output=${firstResult.output} handle=${handle || "<none>"}`);
 
   if (!handle) {

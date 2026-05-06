@@ -16,6 +16,7 @@ export type AgentProviderCapabilities = {
 };
 
 export type AgentRuntimeProfile = {
+  providerId: string;
   displayName?: string;
   roleDescription?: string;
   identityContext?: string;
