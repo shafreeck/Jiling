@@ -114,10 +114,12 @@ impl GlobalAcpManager {
 
 fn get_active_port(provider_dir: &str) -> u16 {
     let home = std::env::var("HOME").unwrap_or_default();
-    let port_path = format!("{}/{}/active_port", home, provider_dir);
-    if let Ok(content) = fs::read_to_string(port_path) {
-        if let Ok(port) = content.trim().parse::<u16>() {
-            return port;
+    let config_path = format!("{}/{}/openclaw.json", home, provider_dir);
+    if let Ok(content) = fs::read_to_string(config_path) {
+        if let Ok(json) = serde_json::from_str::<Value>(&content) {
+            if let Some(port) = json["gateway"]["port"].as_u64() {
+                return port as u16;
+            }
         }
     }
     18789 // default port
