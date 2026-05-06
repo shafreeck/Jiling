@@ -149,6 +149,11 @@ export default function JilingPage() {
   const [selectedProviderId, setSelectedProviderId] = useState<string>("openclaw");
   const [selectedVoice, setSelectedVoice] = useState<string>("Kore");
 
+  const selectedVoiceRef = useRef(selectedVoice);
+  const selectedProviderIdRef = useRef(selectedProviderId);
+  useEffect(() => { selectedVoiceRef.current = selectedVoice; }, [selectedVoice]);
+  useEffect(() => { selectedProviderIdRef.current = selectedProviderId; }, [selectedProviderId]);
+
   const statusRef = useRef<VoiceStatus>("idle");
   const reconnectWantedRef = useRef(false);
   const startingRef = useRef(false);
@@ -246,7 +251,7 @@ export default function JilingPage() {
       },
       onMessage: (message) => handleLiveMessage(message),
     }, profile);
-    client.voiceName = selectedVoice;
+    client.voiceName = selectedVoiceRef.current;
     return client;
   };
 
@@ -295,7 +300,7 @@ export default function JilingPage() {
       streamerRef.current = streamer;
 
       let profile: AgentRuntimeProfile | undefined;
-      const selected = providers.find(p => p.id === selectedProviderId);
+      const selected = providers.find(p => p.id === selectedProviderIdRef.current);
       if (selected) {
         adapterRef.current = selected.adapter;
         profile = await selected.adapter.agentProfile();
@@ -350,9 +355,10 @@ export default function JilingPage() {
   };
 
   const clearContext = () => {
-    if (!selectedProviderId) return;
-    GeminiLiveClient.clearStoredHandle(selectedProviderId);
-    addLog(`[系统] 已清除 ${selectedProviderId} 的上下文记忆。下次对话将重新开始。`);
+    const pId = selectedProviderIdRef.current;
+    if (!pId) return;
+    GeminiLiveClient.clearStoredHandle(pId);
+    addLog(`[系统] 已清除 ${pId} 的上下文记忆。下次对话将重新开始。`);
   };
 
   const runSelfTest = async () => {
