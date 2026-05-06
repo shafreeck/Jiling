@@ -142,8 +142,7 @@ async fn acp_loop(
 
     loop {
         tokio::select! {
-            Some(cmd) = rx.recv() => {
-                if !authenticated { continue; }
+            Some(cmd) = rx.recv(), if authenticated => {
                 match cmd {
                     AcpCommand::RunTask { agent_id, message, run_id_tx } => {
                         let req_id = format!("run-{}", timestamp_ns());
