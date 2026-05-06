@@ -7,6 +7,7 @@ import {
   type Session,
 } from "@google/genai";
 import { invoke } from "@tauri-apps/api/core";
+import type { AgentRuntimeProfile } from "./agent-provider";
 
 type LiveCallbacks = {
   onMessage: (message: LiveMessage) => void;
@@ -43,8 +44,15 @@ export class GeminiLiveClient {
   private latestHandle: string | null = null;
   private handleWaiters: Array<() => void> = [];
 
-  constructor(callbacks: LiveCallbacks) {
+  private profile: AgentRuntimeProfile;
+
+  constructor(callbacks: LiveCallbacks, profile?: AgentRuntimeProfile) {
     this.callbacks = callbacks;
+    this.profile = profile || {
+      roleDescription: "用户本机上的默认 AI Agent。",
+      speakingStyle: "自然、简洁、明确的中文。",
+      source: "default",
+    };
   }
 
   static getStoredHandle() {
@@ -84,6 +92,26 @@ export class GeminiLiveClient {
         : "[Live] start new resumable session"
     );
 
+    const displayName = this.profile.displayName ? `名为“${this.profile.displayName}”` : "运行在 macOS 上";
+    
+    const systemInstructionText = `你是一个本地 AI Agent。
+你应当始终遵循 <IDENTITY> 和 <SOUL> 设定的角色身份与用户对话。
+如果用户问“你是谁”，请按 <IDENTITY> 的设定回答。
+
+${this.profile.identityContext ? `<IDENTITY>\n${this.profile.identityContext}\n</IDENTITY>\n` : ""}
+${this.profile.soulContext ? `<SOUL>\n${this.profile.soulContext}\n</SOUL>\n` : ""}
+${this.profile.userContext ? `<USER>\n${this.profile.userContext}\n</USER>\n` : ""}
+
+你有两个执行形态：实时语音外壳（即现在的你）和后台任务内核。
+当需要长任务、代码、文件操作时，调用 execute_agent_acp_task 进入后台模式。
+你不能把后台执行者表达成另一个助手，那是你的后台形态。
+调用 execute_agent_acp_task 后，只告知用户已提交后台处理，不要编造结果。
+任务完成后，系统会注入结果，你再自然简要地播报。`;
+
+    this.callbacks.onLog("=== 注入的身份上下文 ===");
+    this.callbacks.onLog(systemInstructionText);
+    this.callbacks.onLog("========================");
+
     this.session = await ai.live.connect({
       model: MODEL,
       config: {
@@ -97,14 +125,7 @@ export class GeminiLiveClient {
         outputAudioTranscription: {},
         sessionResumption: handle ? { handle } : {},
         systemInstruction: {
-          parts: [
-            {
-              text: `你叫“机灵”(Jiling)，是一个运行在 macOS 上的中文语音助手。
-你需要准确记住本轮对话里用户刚刚说过的事实、口令和偏好。
-任务执行是异步的。调用 execute_agent_acp_task 后，只告知用户已提交后台处理，不要编造结果。
-任务完成后，系统会发来结果，再自然简要地播报。`,
-            },
-          ],
+          parts: [{ text: systemInstructionText }],
         },
         tools: [
           {

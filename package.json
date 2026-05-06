@@ -13,6 +13,7 @@
     "@base-ui/react": "^1.4.1",
     "@google/genai": "^1.52.0",
     "@tauri-apps/api": "^2.11.0",
+    "@tauri-apps/plugin-fs": "^2.5.1",
     "@tauri-apps/plugin-log": "^2.8.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

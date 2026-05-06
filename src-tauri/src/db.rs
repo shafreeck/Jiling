@@ -1,6 +1,6 @@
 use rusqlite::{params, Connection, Result};
-use std::path::PathBuf;
 use std::fs;
+use std::path::PathBuf;
 
 pub struct Db {
     conn: Connection,
@@ -65,9 +65,7 @@ impl Db {
 
     pub fn get_in_progress_tasks(&self) -> Result<Vec<(String, String)>> {
         let mut stmt = self.conn.prepare("SELECT run_id, agent_id FROM tasks WHERE status IN ('submitted', 'running', 'reconciling')")?;
-        let task_iter = stmt.query_map([], |row| {
-            Ok((row.get(0)?, row.get(1)?))
-        })?;
+        let task_iter = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
 
         let mut tasks = Vec::new();
         for task in task_iter {

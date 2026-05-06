@@ -1,5 +1,5 @@
-use tauri_plugin_log::{Target, TargetKind, RotationStrategy};
 use tauri::Manager;
+use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
 
 pub mod acp;
 mod commands;
@@ -8,6 +8,7 @@ pub mod db;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(
             tauri_plugin_log::Builder::new()
@@ -21,10 +22,10 @@ pub fn run() {
                 .rotation_strategy(RotationStrategy::KeepAll)
                 .filter(|metadata| {
                     let target = metadata.target();
-                    !target.starts_with("tungstenite") && 
-                    !target.starts_with("tokio_tungstenite") &&
-                    !target.starts_with("tao") &&
-                    !target.starts_with("tokio_util")
+                    !target.starts_with("tungstenite")
+                        && !target.starts_with("tokio_tungstenite")
+                        && !target.starts_with("tao")
+                        && !target.starts_with("tokio_util")
                 })
                 .build(),
         )

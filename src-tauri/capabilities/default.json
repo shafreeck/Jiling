@@ -6,6 +6,40 @@
     "main"
   ],
   "permissions": [
-    "core:default"
+    "core:default",
+    "fs:default",
+    {
+      "identifier": "fs:allow-read",
+      "allow": [
+        { "path": "$HOME/.openclaw" },
+        { "path": "$HOME/.openclaw/**" },
+        { "path": "$HOME/.autoclaw" },
+        { "path": "$HOME/.autoclaw/**" },
+        { "path": "$HOME/.hermes" },
+        { "path": "$HOME/.hermes/**" }
+      ]
+    },
+    {
+      "identifier": "fs:allow-exists",
+      "allow": [
+        { "path": "$HOME/.openclaw" },
+        { "path": "$HOME/.openclaw/**" },
+        { "path": "$HOME/.autoclaw" },
+        { "path": "$HOME/.autoclaw/**" },
+        { "path": "$HOME/.hermes" },
+        { "path": "$HOME/.hermes/**" }
+      ]
+    },
+    {
+      "identifier": "fs:allow-read-text-file",
+      "allow": [
+        { "path": "$HOME/.openclaw" },
+        { "path": "$HOME/.openclaw/**" },
+        { "path": "$HOME/.autoclaw" },
+        { "path": "$HOME/.autoclaw/**" },
+        { "path": "$HOME/.hermes" },
+        { "path": "$HOME/.hermes/**" }
+      ]
+    }
   ]
 }

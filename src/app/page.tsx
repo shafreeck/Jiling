@@ -10,9 +10,18 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { GeminiLiveClient, type LiveMessage } from "@/lib/gemini-live";
 import { runGeminiLiveSelfTest } from "@/lib/gemini-live-self-test";
+import { AcpProviderAdapter } from "@/lib/providers/acp-provider";
+import type { AgentProviderAdapter, AgentRuntimeProfile } from "@/lib/agent-provider";
 
 type VoiceStatus = "idle" | "listening" | "thinking" | "speaking";
 type ToolCall = NonNullable<LiveMessage["toolCall"]>;
+
+export type ProviderOption = {
+  id: string;
+  name: string;
+  adapter: AgentProviderAdapter;
+};
+
 type AcpEvent = {
   payload: {
     run_id: string;
@@ -127,11 +136,15 @@ export default function JilingPage() {
   const [isBusy, setIsBusy] = useState(false);
   const [volume, setVolume] = useState(0);
   const [logs, setLogs] = useState<string[]>(["系统就绪，等待语音指令..."]);
+  const [providers, setProviders] = useState<ProviderOption[]>([]);
+  const [selectedProviderId, setSelectedProviderId] = useState<string>("openclaw");
 
   const statusRef = useRef<VoiceStatus>("idle");
   const reconnectWantedRef = useRef(false);
   const startingRef = useRef(false);
   const clientRef = useRef<GeminiLiveClient | null>(null);
+  const adapterRef = useRef<AgentProviderAdapter | null>(null);
+  const profileRef = useRef<AgentRuntimeProfile | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const streamerRef = useRef<AudioStreamer | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
@@ -197,7 +210,7 @@ export default function JilingPage() {
       for (let i = 0; i < input.length; i++) sum += input[i] * input[i];
       setVolume(Math.sqrt(sum / input.length));
 
-      if (statusRef.current !== "listening") return;
+      if (statusRef.current === "idle") return;
 
       const pcm16 = resampleTo16k(input, event.inputBuffer.sampleRate);
       clientRef.current?.sendAudio(pcm16ToBase64(pcm16));
@@ -207,7 +220,7 @@ export default function JilingPage() {
     processor.connect(context.destination);
   };
 
-  const createClient = () =>
+  const createClient = (profile?: AgentRuntimeProfile) =>
     new GeminiLiveClient({
       onLog: addLog,
       onError: (error) => addLog(`[Live] 通信异常: ${errorMessage(error)}`),
@@ -222,7 +235,35 @@ export default function JilingPage() {
         }
       },
       onMessage: (message) => handleLiveMessage(message),
-    });
+    }, profile);
+
+  useEffect(() => {
+    const probeProviders = async () => {
+      try {
+        const home = await import("@tauri-apps/api/path").then(m => m.homeDir());
+        const { exists } = await import("@tauri-apps/plugin-fs");
+        const detected: ProviderOption[] = [];
+        
+        if (await exists(home + "/.openclaw")) {
+          detected.push({ id: "openclaw", name: "OpenClaw", adapter: new AcpProviderAdapter("openclaw", "OpenClaw", ".openclaw") });
+        }
+        if (await exists(home + "/.autoclaw")) {
+          detected.push({ id: "autoclaw", name: "AutoClaw", adapter: new AcpProviderAdapter("autoclaw", "AutoClaw", ".autoclaw") });
+        }
+        if (await exists(home + "/.hermes")) {
+          detected.push({ id: "hermes", name: "Hermes", adapter: new AcpProviderAdapter("hermes", "Hermes", ".hermes") });
+        }
+        
+        if (detected.length > 0) {
+          setProviders(detected);
+          setSelectedProviderId(detected[0].id);
+        }
+      } catch (e) {
+        console.error("Provider detection failed", e);
+      }
+    };
+    probeProviders();
+  }, []);
 
   const startConversation = async () => {
     if (startingRef.current) return;
@@ -240,7 +281,16 @@ export default function JilingPage() {
       };
       streamerRef.current = streamer;
 
-      const client = createClient();
+      let profile: AgentRuntimeProfile | undefined;
+      const selected = providers.find(p => p.id === selectedProviderId);
+      if (selected) {
+        adapterRef.current = selected.adapter;
+        profile = await selected.adapter.agentProfile();
+        profileRef.current = profile;
+        addLog(`[系统] 使用 Provider: ${selected.name}`);
+      }
+
+      const client = createClient(profile);
       clientRef.current = client;
       reconnectWantedRef.current = true;
       await client.connect();
@@ -320,7 +370,7 @@ export default function JilingPage() {
       }
 
       if (content.outputTranscription?.text) {
-        addLog(`机灵: ${content.outputTranscription.text}`);
+        addLog(`${profileRef.current?.displayName || "Agent"}: ${content.outputTranscription.text}`);
       }
 
       if (content.turnComplete && !streamerRef.current?.active && statusRef.current === "speaking") {
@@ -350,7 +400,29 @@ export default function JilingPage() {
         for (const key of Object.keys(callArgs)) {
           args[key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())] = callArgs[key];
         }
-        const result = await invoke(call.name, args);
+        let result;
+        if (call.name === "execute_agent_acp_task" && adapterRef.current) {
+          const runId = await adapterRef.current.submitTask({
+            identity: { systemName: "机灵", runtimeRoleDescription: profileRef.current?.roleDescription || "", mode: "background_core", userFacingRole: "same_assistant" },
+            userRequest: String(callArgs.task),
+            conversationContext: { recentUserIntent: String(callArgs.task), locale: "zh-CN" },
+            executionPolicy: { askBeforeRiskyChanges: true, preferConciseProgress: false, produceSpeakableSummary: true },
+            outputContract: { format: "markdown_with_titles", requireSpeakableSummary: true, requireSpokenReport: true },
+          });
+          result = runId.runId;
+          
+          adapterRef.current.subscribeTask(runId, {
+            onProgress: (e) => addLog(`[Agent] ${e.text}`),
+            onCompleted: (e) => {
+              clientRef.current?.sendSystemUpdate(
+                `背景任务执行完毕。runId: ${runId.runId}\n\n执行结果如下：\n${typeof e.output === 'string' ? e.output : e.output.detailSummary}\n\n请向用户简要汇报上述结果。`
+              );
+            },
+            onFailed: (e) => addLog(`[任务] 失败: ${e.error}`)
+          });
+        } else {
+          result = await invoke(call.name, args);
+        }
         functionResponses.push({ name: call.name, id: call.id, response: { result } });
       } catch (error) {
         functionResponses.push({ name: call.name, id: call.id, response: { error: String(error) } });
@@ -367,49 +439,10 @@ export default function JilingPage() {
 
   useEffect(() => {
     let mounted = true;
-    let cleanup: (() => void) | undefined;
-
-    const setupAcpListeners = async () => {
-      const unlistenAcp = await listen("acp-event", async (event: AcpEvent) => {
-        const { run_id, event_type, data } = event.payload;
-        if (event_type === "assistant") {
-          addLog(`[Agent] ${data.text}`);
-          return;
-        }
-
-        if (event_type === "lifecycle") {
-          addLog(`[任务状态] ${run_id}: ${data.phase}`);
-          if (data.phase === "end") {
-            try {
-              const output = await invoke<string>("get_task_output", { runId: run_id });
-              if (output) {
-                clientRef.current?.sendSystemUpdate(
-                  `背景任务执行完毕。runId: ${run_id}\n\n执行结果如下：\n${output}\n\n请向用户简要汇报上述结果。`
-                );
-              }
-            } catch (error) {
-              addLog(`[任务] 提取结果失败: ${error}`);
-            }
-          }
-        }
-      });
-
-      const unlistenTick = await listen("acp-tick", () => {});
-      return () => {
-        unlistenAcp();
-        unlistenTick();
-      };
-    };
-
-    setupAcpListeners().then((fn) => {
-      if (mounted) cleanup = fn;
-      else fn();
-    });
 
     return () => {
       mounted = false;
       reconnectWantedRef.current = false;
-      cleanup?.();
       stopMic();
       clientRef.current?.closeNow();
       audioContextRef.current?.close().catch(() => {});
@@ -429,7 +462,21 @@ export default function JilingPage() {
           <h1 className="text-lg tracking-[0.28em] uppercase text-white/90">Jiling / 机灵</h1>
           <p className="text-xs text-slate-500 mt-1">{statusText}</p>
         </div>
-        <div className={`h-2.5 w-2.5 rounded-full ${isConnected ? "bg-emerald-400" : "bg-slate-600"}`} />
+        <div className="flex items-center gap-4">
+          {providers.length > 0 && (
+            <select
+              disabled={isBusy || isConnected}
+              value={selectedProviderId}
+              onChange={(e) => setSelectedProviderId(e.target.value)}
+              className="bg-black/50 border border-white/10 text-white/80 text-sm rounded-md px-2 py-1 outline-none focus:border-white/30"
+            >
+              {providers.map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          )}
+          <div className={`h-2.5 w-2.5 rounded-full ${isConnected ? "bg-emerald-400" : "bg-slate-600"}`} />
+        </div>
       </header>
 
       <section className="flex-1 min-h-0 flex flex-col items-center justify-center gap-10">

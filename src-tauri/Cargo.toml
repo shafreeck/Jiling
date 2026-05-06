@@ -47,3 +47,4 @@ rand = "0.8"
 sha2 = "0.10"
 rusqlite = { version = "0.39.0", features = ["bundled"] }
 dashmap = "6.1.0"
+tauri-plugin-fs = "2"

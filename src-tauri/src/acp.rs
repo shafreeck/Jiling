@@ -1,15 +1,15 @@
-use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
-use futures_util::{StreamExt, SinkExt};
-use ed25519_dalek::{SigningKey, Signer, pkcs8::DecodePrivateKey};
-use base64::{Engine as _, engine::general_purpose};
-use std::fs;
+use crate::db::Db;
+use base64::{engine::general_purpose, Engine as _};
+use dashmap::DashMap;
+use ed25519_dalek::{pkcs8::DecodePrivateKey, Signer, SigningKey};
+use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
-use tokio::sync::{mpsc, Mutex};
+use std::fs;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::Emitter;
-use dashmap::DashMap;
-use crate::db::Db;
+use tokio::sync::{mpsc, Mutex};
+use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct AcpEvent {
@@ -32,8 +32,14 @@ struct PendingRequest {
 }
 
 enum AcpCommand {
-    RunTask { agent_id: String, message: String, run_id_tx: mpsc::Sender<String> },
-    AbortTask { run_id: String },
+    RunTask {
+        agent_id: String,
+        message: String,
+        run_id_tx: mpsc::Sender<String>,
+    },
+    AbortTask {
+        run_id: String,
+    },
 }
 
 impl GlobalAcpManager {
@@ -41,42 +47,61 @@ impl GlobalAcpManager {
         let (tx, mut rx) = mpsc::unbounded_channel::<AcpCommand>();
         let db = Arc::new(Mutex::new(Db::new().expect("Failed to initialize DB")));
         let pending_requests = Arc::new(DashMap::new());
-        
+
         let db_clone = Arc::clone(&db);
         let pending_clone = Arc::clone(&pending_requests);
 
         tauri::async_runtime::spawn(async move {
             loop {
-                if let Err(e) = acp_loop(&app_handle, &mut rx, Arc::clone(&db_clone), Arc::clone(&pending_clone)).await {
+                if let Err(e) = acp_loop(
+                    &app_handle,
+                    &mut rx,
+                    Arc::clone(&db_clone),
+                    Arc::clone(&pending_clone),
+                )
+                .await
+                {
                     eprintln!("ACP Loop Error: {}. Retrying in 5s...", e);
                     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                 }
             }
         });
 
-        GlobalAcpManager { tx, db, pending_requests }
+        GlobalAcpManager {
+            tx,
+            db,
+            pending_requests,
+        }
     }
 
     pub async fn run_task(&self, agent_id: String, message: String) -> Result<String, String> {
         let (run_id_tx, mut run_id_rx) = mpsc::channel(1);
-        self.tx.send(AcpCommand::RunTask { agent_id, message, run_id_tx }).map_err(|e| e.to_string())?;
-        
+        self.tx
+            .send(AcpCommand::RunTask {
+                agent_id,
+                message,
+                run_id_tx,
+            })
+            .map_err(|e| e.to_string())?;
+
         match tokio::time::timeout(tokio::time::Duration::from_secs(30), run_id_rx.recv()).await {
             Ok(Some(run_id)) => Ok(run_id),
-            _ => Err("Failed to get runId (Timeout)".to_string())
+            _ => Err("Failed to get runId (Timeout)".to_string()),
         }
     }
 
     pub async fn abort_task(&self, run_id: String) -> Result<(), String> {
-        self.tx.send(AcpCommand::AbortTask { run_id }).map_err(|e| e.to_string())
+        self.tx
+            .send(AcpCommand::AbortTask { run_id })
+            .map_err(|e| e.to_string())
     }
 }
 
 async fn acp_loop(
-    app_handle: &tauri::AppHandle, 
-    rx: &mut mpsc::UnboundedReceiver<AcpCommand>, 
+    app_handle: &tauri::AppHandle,
+    rx: &mut mpsc::UnboundedReceiver<AcpCommand>,
     db: Arc<Mutex<Db>>,
-    pending_requests: Arc<DashMap<String, PendingRequest>>
+    pending_requests: Arc<DashMap<String, PendingRequest>>,
 ) -> Result<(), String> {
     let ws_url = "ws://127.0.0.1:18789/acp";
     let (ws_stream, _) = connect_async(ws_url).await.map_err(|e| e.to_string())?;
@@ -97,7 +122,7 @@ async fn acp_loop(
                             agent_id: agent_id.clone(),
                             message: message.clone(),
                         });
-                        
+
                         let idempotency_key = format!("jiling-{}", timestamp_ns());
                         let msg = json!({
                             "type": "req", "method": "agent", "id": req_id,
@@ -117,7 +142,7 @@ async fn acp_loop(
             Some(Ok(msg)) = ws_read.next() => {
                 if let Message::Text(text) = msg {
                     let v: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
-                    
+
                     if v["event"] == "connect.challenge" {
                         let auth_msg = build_auth_msg(&v, &device_id, &device_token, &signing_key);
                         let _ = ws_write.send(Message::Text(auth_msg.to_string())).await;
@@ -149,7 +174,7 @@ async fn acp_loop(
                         let payload = &v["payload"];
                         let run_id = payload["runId"].as_str().unwrap_or("");
                         let stream = payload["stream"].as_str().unwrap_or("");
-                        
+
                         let db_lock = db.lock().await;
                         if stream == "assistant" {
                             if let Some(text) = payload["data"]["text"].as_str() {
@@ -170,7 +195,7 @@ async fn acp_loop(
                             }).unwrap_or(());
                         }
                     }
-                    
+
                     if v["type"] == "res" {
                         let res_id = v["id"].as_str().unwrap_or("");
                         if res_id.starts_with("run-") {
@@ -210,26 +235,44 @@ async fn acp_loop(
 fn load_identity() -> Result<(String, String, SigningKey), String> {
     let home = std::env::var("HOME").map_err(|e| e.to_string())?;
     let device_auth_path = format!("{}/.openclaw/identity/device-auth.json", home);
-    let auth_json: Value = serde_json::from_str(&fs::read_to_string(device_auth_path).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-    let device_id = auth_json["deviceId"].as_str().ok_or("Missing deviceId")?.to_string();
-    let device_token = auth_json["tokens"]["operator"]["token"].as_str().ok_or("Missing token")?.to_string();
+    let auth_json: Value =
+        serde_json::from_str(&fs::read_to_string(device_auth_path).map_err(|e| e.to_string())?)
+            .map_err(|e| e.to_string())?;
+    let device_id = auth_json["deviceId"]
+        .as_str()
+        .ok_or("Missing deviceId")?
+        .to_string();
+    let device_token = auth_json["tokens"]["operator"]["token"]
+        .as_str()
+        .ok_or("Missing token")?
+        .to_string();
 
     let device_json_path = format!("{}/.openclaw/identity/device.json", home);
-    let device_data: Value = serde_json::from_str(&fs::read_to_string(device_json_path).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-    let private_key_pem = device_data["privateKeyPem"].as_str().ok_or("Missing privateKeyPem")?;
+    let device_data: Value =
+        serde_json::from_str(&fs::read_to_string(device_json_path).map_err(|e| e.to_string())?)
+            .map_err(|e| e.to_string())?;
+    let private_key_pem = device_data["privateKeyPem"]
+        .as_str()
+        .ok_or("Missing privateKeyPem")?;
     let signing_key = SigningKey::from_pkcs8_pem(private_key_pem).map_err(|e| e.to_string())?;
 
     Ok((device_id, device_token, signing_key))
 }
 
-fn build_auth_msg(v: &Value, device_id: &str, device_token: &str, signing_key: &SigningKey) -> Value {
+fn build_auth_msg(
+    v: &Value,
+    device_id: &str,
+    device_token: &str,
+    signing_key: &SigningKey,
+) -> Value {
     let nonce = v["payload"]["nonce"].as_str().unwrap_or("");
     let ts = v["payload"]["ts"].as_i64().unwrap_or(0);
     let sign_payload = format!("v3|{}|node-host|node|operator|operator.admin,operator.read,operator.write|{}|{}|{}|darwin|desktop", 
         device_id, ts, device_token, nonce);
     let sig = signing_key.sign(sign_payload.as_bytes());
     let sig_b64 = general_purpose::URL_SAFE_NO_PAD.encode(sig.to_bytes());
-    let public_key_b64 = general_purpose::URL_SAFE_NO_PAD.encode(signing_key.verifying_key().to_bytes());
+    let public_key_b64 =
+        general_purpose::URL_SAFE_NO_PAD.encode(signing_key.verifying_key().to_bytes());
 
     json!({
         "type": "req", "method": "connect", "id": "auth",
@@ -243,7 +286,10 @@ fn build_auth_msg(v: &Value, device_id: &str, device_token: &str, signing_key: &
 }
 
 fn timestamp_ns() -> u128 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos()
 }
 
 // Structs for Tauri Command Arguments to support both snake_case and camelCase mapping seamlessly
@@ -265,7 +311,7 @@ pub struct RunIdArgs {
 pub async fn execute_agent_acp_task(
     state: tauri::State<'_, Arc<GlobalAcpManager>>,
     agent: String,
-    task: String
+    task: String,
 ) -> Result<String, String> {
     state.run_task(agent, task).await
 }
@@ -273,7 +319,7 @@ pub async fn execute_agent_acp_task(
 #[tauri::command]
 pub async fn abort_agent_task(
     state: tauri::State<'_, Arc<GlobalAcpManager>>,
-    run_id: String
+    run_id: String,
 ) -> Result<(), String> {
     state.abort_task(run_id).await
 }
@@ -281,7 +327,7 @@ pub async fn abort_agent_task(
 #[tauri::command]
 pub async fn get_task_output(
     state: tauri::State<'_, Arc<GlobalAcpManager>>,
-    run_id: String
+    run_id: String,
 ) -> Result<String, String> {
     let db = state.db.lock().await;
     db.get_task_output(&run_id).map_err(|e| e.to_string())
