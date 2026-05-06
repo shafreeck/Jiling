@@ -28,7 +28,6 @@ function errorMessage(error: unknown) {
 }
 
 const MODEL = "gemini-3.1-flash-live-preview";
-const HANDLE_KEY = "gemini_resumption_token";
 
 function handleLabel(handle: string | null) {
   if (!handle) return "<none>";
@@ -49,28 +48,29 @@ export class GeminiLiveClient {
   constructor(callbacks: LiveCallbacks, profile?: AgentRuntimeProfile) {
     this.callbacks = callbacks;
     this.profile = profile || {
+      providerId: "default",
       roleDescription: "用户本机上的默认 AI Agent。",
       speakingStyle: "自然、简洁、明确的中文。",
       source: "default",
     };
   }
 
-  static getStoredHandle() {
+  static getStoredHandle(providerId: string) {
     if (typeof window === "undefined") return null;
-    return localStorage.getItem(HANDLE_KEY);
+    return localStorage.getItem(`jiling_gemini_live_handle_${providerId}`);
   }
 
-  static setStoredHandle(handle: string | null) {
+  static setStoredHandle(providerId: string, handle: string | null) {
     if (typeof window === "undefined") return;
     if (handle) {
-      localStorage.setItem(HANDLE_KEY, handle);
+      localStorage.setItem(`jiling_gemini_live_handle_${providerId}`, handle);
     } else {
-      localStorage.removeItem(HANDLE_KEY);
+      localStorage.removeItem(`jiling_gemini_live_handle_${providerId}`);
     }
   }
 
-  static clearStoredHandle() {
-    GeminiLiveClient.setStoredHandle(null);
+  static clearStoredHandle(providerId: string) {
+    GeminiLiveClient.setStoredHandle(providerId, null);
   }
 
   private async getAi() {
@@ -84,7 +84,7 @@ export class GeminiLiveClient {
 
   async connect() {
     const ai = await this.getAi();
-    const handle = GeminiLiveClient.getStoredHandle();
+    const handle = GeminiLiveClient.getStoredHandle(this.profile.providerId);
 
     this.callbacks.onLog(
       handle
@@ -173,7 +173,7 @@ ${this.profile.userContext ? `<USER>\n${this.profile.userContext}\n</USER>\n` : 
           this.callbacks.onLog(`[Live] close: ${event.code} ${event.reason || ""}`);
           this.session = null;
           if (event.code === 1008) {
-            GeminiLiveClient.clearStoredHandle();
+            GeminiLiveClient.clearStoredHandle(this.profile.providerId);
             this.callbacks.onLog("[Live] handle rejected, cleared stored handle");
           }
           this.callbacks.onClose(event);
@@ -187,7 +187,7 @@ ${this.profile.userContext ? `<USER>\n${this.profile.userContext}\n</USER>\n` : 
     if (update?.resumable && update.newHandle) {
       this.latestHandle = update.newHandle;
       this.lastHandleAt = Date.now();
-      GeminiLiveClient.setStoredHandle(update.newHandle);
+      GeminiLiveClient.setStoredHandle(this.profile.providerId, update.newHandle);
       this.callbacks.onLog(`[Live] newHandle ${handleLabel(update.newHandle)}`);
       this.resolveHandleWaiters();
     }
