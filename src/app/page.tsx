@@ -22,6 +22,15 @@ export type ProviderOption = {
   adapter: AgentProviderAdapter;
 };
 
+const VOICES = [
+  { id: "Kore", name: "Kore (女声)" },
+  { id: "Aoede", name: "Aoede (女声)" },
+  { id: "Leto", name: "Leto (女声)" },
+  { id: "Puck", name: "Puck (男声)" },
+  { id: "Charon", name: "Charon (男声)" },
+  { id: "Fenrir", name: "Fenrir (男声)" },
+];
+
 type AcpEvent = {
   payload: {
     run_id: string;
@@ -138,6 +147,7 @@ export default function JilingPage() {
   const [logs, setLogs] = useState<string[]>(["系统就绪，等待语音指令..."]);
   const [providers, setProviders] = useState<ProviderOption[]>([]);
   const [selectedProviderId, setSelectedProviderId] = useState<string>("openclaw");
+  const [selectedVoice, setSelectedVoice] = useState<string>("Kore");
 
   const statusRef = useRef<VoiceStatus>("idle");
   const reconnectWantedRef = useRef(false);
@@ -220,8 +230,8 @@ export default function JilingPage() {
     processor.connect(context.destination);
   };
 
-  const createClient = (profile?: AgentRuntimeProfile) =>
-    new GeminiLiveClient({
+  const createClient = (profile?: AgentRuntimeProfile) => {
+    const client = new GeminiLiveClient({
       onLog: addLog,
       onError: (error) => addLog(`[Live] 通信异常: ${errorMessage(error)}`),
       onClose: () => {
@@ -236,6 +246,9 @@ export default function JilingPage() {
       },
       onMessage: (message) => handleLiveMessage(message),
     }, profile);
+    client.voiceName = selectedVoice;
+    return client;
+  };
 
   useEffect(() => {
     const probeProviders = async () => {
@@ -469,6 +482,17 @@ export default function JilingPage() {
           <p className="text-xs text-slate-500 mt-1">{statusText}</p>
         </div>
         <div className="flex items-center gap-4">
+          <select
+            disabled={isBusy || isConnected}
+            value={selectedVoice}
+            onChange={(e) => setSelectedVoice(e.target.value)}
+            className="bg-black/50 border border-white/10 text-white/80 text-sm rounded-md px-2 py-1 outline-none focus:border-white/30"
+          >
+            {VOICES.map(v => (
+              <option key={v.id} value={v.id}>{v.name}</option>
+            ))}
+          </select>
+          
           {providers.length > 0 && (
             <select
               disabled={isBusy || isConnected}

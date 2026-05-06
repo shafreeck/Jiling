@@ -37,6 +37,7 @@ function handleLabel(handle: string | null) {
 export class GeminiLiveClient {
   private static ai: GoogleGenAI | null = null;
   private session: Session | null = null;
+  public voiceName: string = "Kore";
   private callbacks: LiveCallbacks;
   private lastAudioAt = 0;
   private lastHandleAt = 0;
@@ -118,7 +119,7 @@ ${this.profile.userContext ? `<USER>\n${this.profile.userContext}\n</USER>\n` : 
         responseModalities: [Modality.AUDIO],
         speechConfig: {
           voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: "Kore" },
+            prebuiltVoiceConfig: { voiceName: this.voiceName },
           },
         },
         inputAudioTranscription: {},
@@ -188,7 +189,6 @@ ${this.profile.userContext ? `<USER>\n${this.profile.userContext}\n</USER>\n` : 
       this.latestHandle = update.newHandle;
       this.lastHandleAt = Date.now();
       GeminiLiveClient.setStoredHandle(this.profile.providerId, update.newHandle);
-      this.callbacks.onLog(`[Live] newHandle ${handleLabel(update.newHandle)}`);
       this.resolveHandleWaiters();
     }
 
