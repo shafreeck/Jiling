@@ -95,11 +95,12 @@ export class GeminiLiveClient {
 
     const displayName = this.profile.displayName ? `名为“${this.profile.displayName}”` : "运行在 macOS 上";
     
-    const isMale = ["Puck", "Charon", "Fenrir", "Zephyr", "Orus"].includes(this.voiceName);
+    const isMale = this.voiceName.includes("male");
     const genderText = isMale ? "男性" : "女性";
+    const isDefault = this.voiceName.startsWith("default");
 
     const systemInstructionText = `你是一个本地 AI Agent。
-请务必使用标准、纯正、地道的中文普通话进行语音对话。你的发音应当自然、流畅，表现得像一个土生土长的中国${genderText}，严禁带有任何不自然的“外国口音”或机械感。
+请务必使用标准、纯正、地道的中文普通话进行语音对话。你的发音应当自然、流畅，表现得像一个土生土长的中国${genderText}，严禁带有任何不自然的“外国口音”或机械感。如果你检测到当前是${genderText}发音，请保持稳定。
 
 你应当始终遵循 <IDENTITY> 和 <SOUL> 设定的角色身份与用户对话。
 如果用户问“你是谁”，请按 <IDENTITY> 的设定回答。
@@ -124,7 +125,7 @@ ${this.profile.userContext ? `<USER>\n${this.profile.userContext}\n</USER>\n` : 
         responseModalities: [Modality.AUDIO],
         speechConfig: {
           languageCode: "zh-CN",
-          ...(this.voiceName !== "default" ? {
+          ...(!isDefault ? {
             voiceConfig: {
               prebuiltVoiceConfig: { voiceName: this.voiceName },
             },
