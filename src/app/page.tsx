@@ -482,7 +482,7 @@ export default function JilingPage() {
       <section className="flex-1 min-h-0 flex flex-col items-center justify-center gap-10">
         <SmartOrb volume={volume} status={status} />
 
-        <div className="flex items-center gap-4 rounded-full border border-white/10 bg-white/[0.03] p-2">
+        <div className="flex items-center gap-4 rounded-full border border-white/10 bg-white/3 p-2">
           <Button
             disabled={isBusy}
             onClick={isConnected ? forceReconnect : runSelfTest}
