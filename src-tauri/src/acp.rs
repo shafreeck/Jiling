@@ -22,7 +22,7 @@ pub struct GlobalAcpManager {
     tx: mpsc::UnboundedSender<AcpCommand>,
     pub db: Arc<Mutex<Db>>,
     #[allow(dead_code)]
-    pub pending_requests: Arc<DashMap<String, PendingRequest>>,
+    pending_requests: Arc<DashMap<String, PendingRequest>>,
 }
 
 struct PendingRequest {
@@ -103,14 +103,14 @@ async fn acp_loop(
                             "type": "req", "method": "agent", "id": req_id,
                             "params": { "agentId": agent_id, "message": message, "idempotencyKey": idempotency_key }
                         });
-                        let _ = ws_write.send(Message::Text(msg.to_string().into())).await;
+                        let _ = ws_write.send(Message::Text(msg.to_string())).await;
                     }
                     AcpCommand::AbortTask { run_id } => {
                         let msg = json!({
                             "type": "req", "method": "sessions.abort", "id": format!("abort-{}", timestamp_ns()),
                             "params": { "runId": run_id }
                         });
-                        let _ = ws_write.send(Message::Text(msg.to_string().into())).await;
+                        let _ = ws_write.send(Message::Text(msg.to_string())).await;
                     }
                 }
             }
@@ -120,7 +120,7 @@ async fn acp_loop(
                     
                     if v["event"] == "connect.challenge" {
                         let auth_msg = build_auth_msg(&v, &device_id, &device_token, &signing_key);
-                        let _ = ws_write.send(Message::Text(auth_msg.to_string().into())).await;
+                        let _ = ws_write.send(Message::Text(auth_msg.to_string())).await;
                         continue;
                     }
                     if v["type"] == "res" && v["id"] == "auth" {
@@ -133,7 +133,7 @@ async fn acp_loop(
                                         "type": "req", "method": "agent.wait", "id": format!("wait-{}", run_id),
                                         "params": { "runId": run_id }
                                     });
-                                    let _ = ws_write.send(Message::Text(wait_msg.to_string().into())).await;
+                                    let _ = ws_write.send(Message::Text(wait_msg.to_string())).await;
                                 }
                             }
                         }

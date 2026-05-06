@@ -3,14 +3,30 @@
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import type { FunctionResponse } from "@google/genai";
 import { Mic, MicOff, RotateCw, Terminal } from "lucide-react";
 import { SmartOrb } from "@/components/SmartOrb";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { GeminiLiveClient } from "@/lib/gemini-live";
+import { GeminiLiveClient, type LiveMessage } from "@/lib/gemini-live";
 import { runGeminiLiveSelfTest } from "@/lib/gemini-live-self-test";
 
 type VoiceStatus = "idle" | "listening" | "thinking" | "speaking";
+type ToolCall = NonNullable<LiveMessage["toolCall"]>;
+type AcpEvent = {
+  payload: {
+    run_id: string;
+    event_type: string;
+    data: {
+      text?: string;
+      phase?: string;
+    };
+  };
+};
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
 
 class AudioStreamer {
   private context: AudioContext;
@@ -194,14 +210,14 @@ export default function JilingPage() {
   const createClient = () =>
     new GeminiLiveClient({
       onLog: addLog,
-      onError: (error) => addLog(`[Live] 通信异常: ${error.message || error}`),
+      onError: (error) => addLog(`[Live] 通信异常: ${errorMessage(error)}`),
       onClose: () => {
         setIsConnected(false);
         clientRef.current = null;
         if (reconnectWantedRef.current && statusRef.current !== "idle") {
           addLog("[系统] 连接断开，准备重连...");
           window.setTimeout(() => {
-            startConversation().catch((error) => addLog(`[系统] 重连失败: ${error.message || error}`));
+            startConversation().catch((error) => addLog(`[系统] 重连失败: ${errorMessage(error)}`));
           }, 350);
         }
       },
@@ -275,14 +291,14 @@ export default function JilingPage() {
     setIsBusy(true);
     try {
       await runGeminiLiveSelfTest(addLog);
-    } catch (error: any) {
-      addLog(`[自检] FAIL: ${error.message || error}`);
+    } catch (error: unknown) {
+      addLog(`[自检] FAIL: ${errorMessage(error)}`);
     } finally {
       setIsBusy(false);
     }
   };
 
-  const handleLiveMessage = (message: any) => {
+  const handleLiveMessage = (message: LiveMessage) => {
     const content = message.serverContent;
     if (content) {
       if (content.interrupted) {
@@ -314,7 +330,7 @@ export default function JilingPage() {
 
     if (message.toolCall) {
       setStatus("thinking");
-      handleToolCall(message.toolCall).catch((error) => addLog(`[工具] 异常: ${error.message || error}`));
+      handleToolCall(message.toolCall).catch((error) => addLog(`[工具] 异常: ${errorMessage(error)}`));
     }
 
     if (message.setupComplete) {
@@ -322,15 +338,17 @@ export default function JilingPage() {
     }
   };
 
-  const handleToolCall = async (toolCall: any) => {
-    const functionResponses = [];
+  const handleToolCall = async (toolCall: ToolCall) => {
+    const functionResponses: FunctionResponse[] = [];
 
     for (const call of toolCall.functionCalls || []) {
+      if (!call.name) continue;
       addLog(`[工具] 执行 ${call.name}`);
       try {
-        const args: Record<string, any> = {};
-        for (const key of Object.keys(call.args || {})) {
-          args[key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())] = call.args[key];
+        const args: Record<string, unknown> = {};
+        const callArgs = call.args || {};
+        for (const key of Object.keys(callArgs)) {
+          args[key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())] = callArgs[key];
         }
         const result = await invoke(call.name, args);
         functionResponses.push({ name: call.name, id: call.id, response: { result } });
@@ -352,7 +370,7 @@ export default function JilingPage() {
     let cleanup: (() => void) | undefined;
 
     const setupAcpListeners = async () => {
-      const unlistenAcp = await listen("acp-event", async (event: any) => {
+      const unlistenAcp = await listen("acp-event", async (event: AcpEvent) => {
         const { run_id, event_type, data } = event.payload;
         if (event_type === "assistant") {
           addLog(`[Agent] ${data.text}`);

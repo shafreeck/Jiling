@@ -1,16 +1,29 @@
 import { GoogleGenAI, Modality } from "@google/genai";
 import { invoke } from "@tauri-apps/api/core";
-import { GeminiLiveClient } from "@/lib/gemini-live";
+import { GeminiLiveClient, type LiveCloseEvent, type LiveMessage } from "@/lib/gemini-live";
 
 type LogFn = (message: string) => void;
+type TurnObserver = (message: LiveMessage) => void;
+type ObserveTurn = (observer: TurnObserver | null) => void;
+type LiveHarnessSession = {
+  sendRealtimeInput: (input: {
+    audio?: { data: string; mimeType: string };
+    audioStreamEnd?: boolean;
+  }) => void;
+  close: () => void;
+};
 
 type LiveHarness = {
-  session: any;
-  next: (timeoutMs?: number) => Promise<any>;
+  session: LiveHarnessSession;
+  next: (timeoutMs?: number) => Promise<LiveMessage>;
 };
 
 const MODEL = "gemini-3.1-flash-live-preview";
 const EXPECTED_PHRASE = "青铜钥匙52741";
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
 
 async function fetchPcm(path: string) {
   const response = await fetch(path);
@@ -21,7 +34,7 @@ async function fetchPcm(path: string) {
 }
 
 async function openLiveSession(ai: GoogleGenAI, handle: string | null, log: LogFn): Promise<LiveHarness> {
-  const queue: any[] = [];
+  const queue: LiveMessage[] = [];
   let notify: (() => void) | null = null;
 
   const session = await ai.live.connect({
@@ -42,20 +55,20 @@ async function openLiveSession(ai: GoogleGenAI, handle: string | null, log: LogF
     },
     callbacks: {
       onopen: () => log(`[自检] Live 已打开 (${handle ? "resume" : "new"})`),
-      onmessage: (message: any) => {
+      onmessage: (message: LiveMessage) => {
         queue.push(message);
         notify?.();
         notify = null;
       },
-      onerror: (error: any) => log(`[自检] Live 错误: ${error.message || error}`),
-      onclose: (event: any) => log(`[自检] Live 关闭: ${event.code} ${event.reason || ""}`),
+      onerror: (error: unknown) => log(`[自检] Live 错误: ${errorMessage(error)}`),
+      onclose: (event: LiveCloseEvent) => log(`[自检] Live 关闭: ${event.code} ${event.reason || ""}`),
     },
-  });
+  }) as LiveHarnessSession;
 
   const next = (timeoutMs = 15000) =>
-    new Promise<any>((resolve, reject) => {
+    new Promise<LiveMessage>((resolve, reject) => {
       if (queue.length > 0) {
-        resolve(queue.shift());
+        resolve(queue.shift() as LiveMessage);
         return;
       }
 
@@ -65,7 +78,7 @@ async function openLiveSession(ai: GoogleGenAI, handle: string | null, log: LogF
 
       notify = () => {
         window.clearTimeout(timer);
-        resolve(queue.shift());
+        resolve(queue.shift() as LiveMessage);
       };
     });
 
@@ -78,7 +91,7 @@ async function openLiveSession(ai: GoogleGenAI, handle: string | null, log: LogF
   }
 }
 
-function sendPcm(session: any, pcm: Uint8Array) {
+function sendPcm(session: LiveHarnessSession, pcm: Uint8Array) {
   for (let offset = 0; offset < pcm.length; offset += 3200) {
     const chunk = pcm.subarray(offset, Math.min(offset + 3200, pcm.length));
     let binary = "";
@@ -182,7 +195,7 @@ export async function runGeminiLiveSelfTest(log: LogFn) {
   await runProductionClientSelfTest(rememberPcm, askPcm, log);
 }
 
-async function runProductionClientTurn(client: GeminiLiveClient, pcm: Uint8Array) {
+async function runProductionClientTurn(client: GeminiLiveClient, pcm: Uint8Array, observeTurn: ObserveTurn) {
   let input = "";
   let output = "";
   let turnComplete = false;
@@ -192,7 +205,7 @@ async function runProductionClientTurn(client: GeminiLiveClient, pcm: Uint8Array
       reject(new Error("生产客户端等待 turnComplete 超时"));
     }, 45000);
 
-    (client as any).__selfTestResolveTurn = (message: any) => {
+    observeTurn((message) => {
       const inputText = message.serverContent?.inputTranscription?.text;
       if (inputText) input += inputText;
 
@@ -204,28 +217,32 @@ async function runProductionClientTurn(client: GeminiLiveClient, pcm: Uint8Array
         window.clearTimeout(timeout);
         resolve({ input, output });
       }
-    };
+    });
   });
 
   sendPcmToClient(client, pcm);
-  return waitForTurn;
+  return waitForTurn.finally(() => observeTurn(null));
 }
 
 async function runProductionClientSelfTest(rememberPcm: Uint8Array, askPcm: Uint8Array, log: LogFn) {
   log("[生产自检] 开始 GeminiLiveClient 闭环自检...");
   GeminiLiveClient.clearStoredHandle();
+  let turnObserver: TurnObserver | null = null;
+  const observeTurn: ObserveTurn = (observer) => {
+    turnObserver = observer;
+  };
 
   const makeClient = (label: string) => {
     const client = new GeminiLiveClient({
       onLog: (message) => log(`[生产自检:${label}] ${message}`),
-      onError: (error) => log(`[生产自检:${label}] error ${error.message || error}`),
+      onError: (error) => log(`[生产自检:${label}] error ${errorMessage(error)}`),
       onClose: () => log(`[生产自检:${label}] closed`),
       onMessage: (message) => {
         const inputText = message.serverContent?.inputTranscription?.text;
         if (inputText) log(`[生产自检:${label}] 输入转写: ${inputText}`);
         const outputText = message.serverContent?.outputTranscription?.text;
         if (outputText) log(`[生产自检:${label}] 输出转写: ${outputText}`);
-        (client as any).__selfTestResolveTurn?.(message);
+        turnObserver?.(message);
       },
     });
     return client;
@@ -233,7 +250,7 @@ async function runProductionClientSelfTest(rememberPcm: Uint8Array, askPcm: Uint
 
   const first = makeClient("first");
   await first.connect();
-  const firstResult = await runProductionClientTurn(first, rememberPcm);
+  const firstResult = await runProductionClientTurn(first, rememberPcm, observeTurn);
   await first.closeGracefully(5000);
   const handle = GeminiLiveClient.getStoredHandle();
   log(`[生产自检] 第一轮 output=${firstResult.output} handle=${handle || "<none>"}`);
@@ -246,7 +263,7 @@ async function runProductionClientSelfTest(rememberPcm: Uint8Array, askPcm: Uint
 
   const second = makeClient("second");
   await second.connect();
-  const secondResult = await runProductionClientTurn(second, askPcm);
+  const secondResult = await runProductionClientTurn(second, askPcm, observeTurn);
   await second.closeGracefully(5000);
 
   if (!secondResult.output.includes(EXPECTED_PHRASE)) {

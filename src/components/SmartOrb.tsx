@@ -4,11 +4,10 @@ import { motion } from "framer-motion";
 
 interface SmartOrbProps {
   volume?: number;
-  isListening?: boolean;
   status?: "idle" | "listening" | "thinking" | "speaking";
 }
 
-export function SmartOrb({ volume = 0, isListening = false, status = "idle" }: SmartOrbProps) {
+export function SmartOrb({ volume = 0, status = "idle" }: SmartOrbProps) {
   const getOrbGradient = () => {
     switch (status) {
       case "listening": return "from-blue-400 to-cyan-500";

@@ -1,12 +1,30 @@
-import { GoogleGenAI, Modality, Type } from "@google/genai";
+import {
+  GoogleGenAI,
+  Modality,
+  Type,
+  type FunctionResponse,
+  type LiveServerMessage,
+  type Session,
+} from "@google/genai";
 import { invoke } from "@tauri-apps/api/core";
 
 type LiveCallbacks = {
-  onMessage: (message: any) => void;
-  onError: (error: any) => void;
+  onMessage: (message: LiveMessage) => void;
+  onError: (error: unknown) => void;
   onLog: (message: string) => void;
-  onClose: (event: any) => void;
+  onClose: (event: LiveCloseEvent) => void;
 };
+
+export type LiveCloseEvent = {
+  code?: number;
+  reason?: string;
+};
+
+export type LiveMessage = LiveServerMessage;
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
 
 const MODEL = "gemini-3.1-flash-live-preview";
 const HANDLE_KEY = "gemini_resumption_token";
@@ -18,7 +36,7 @@ function handleLabel(handle: string | null) {
 
 export class GeminiLiveClient {
   private static ai: GoogleGenAI | null = null;
-  private session: any = null;
+  private session: Session | null = null;
   private callbacks: LiveCallbacks;
   private lastAudioAt = 0;
   private lastHandleAt = 0;
@@ -125,12 +143,12 @@ export class GeminiLiveClient {
       },
       callbacks: {
         onopen: () => this.callbacks.onLog("[Live] websocket open"),
-        onmessage: (message: any) => this.handleMessage(message),
-        onerror: (error: any) => {
-          this.callbacks.onLog(`[Live] error: ${error.message || error}`);
+        onmessage: (message: LiveMessage) => this.handleMessage(message),
+        onerror: (error: unknown) => {
+          this.callbacks.onLog(`[Live] error: ${errorMessage(error)}`);
           this.callbacks.onError(error);
         },
-        onclose: (event: any) => {
+        onclose: (event: LiveCloseEvent) => {
           this.callbacks.onLog(`[Live] close: ${event.code} ${event.reason || ""}`);
           this.session = null;
           if (event.code === 1008) {
@@ -143,7 +161,7 @@ export class GeminiLiveClient {
     });
   }
 
-  private handleMessage(message: any) {
+  private handleMessage(message: LiveMessage) {
     const update = message.sessionResumptionUpdate;
     if (update?.resumable && update.newHandle) {
       this.latestHandle = update.newHandle;
@@ -167,7 +185,7 @@ export class GeminiLiveClient {
     });
   }
 
-  sendToolResponse(functionResponses: any[]) {
+  sendToolResponse(functionResponses: FunctionResponse[]) {
     this.session?.sendToolResponse({ functionResponses });
   }
 
@@ -198,7 +216,6 @@ export class GeminiLiveClient {
 
     return new Promise<void>((resolve) => {
       let done = false;
-      let timeout: number;
       const finish = () => {
         if (done) return;
         done = true;
@@ -206,8 +223,8 @@ export class GeminiLiveClient {
         this.handleWaiters = this.handleWaiters.filter((waiter) => waiter !== finish);
         resolve();
       };
+      const timeout = window.setTimeout(finish, timeoutMs);
 
-      timeout = window.setTimeout(finish, timeoutMs);
       this.handleWaiters.push(finish);
     });
   }
@@ -220,8 +237,8 @@ export class GeminiLiveClient {
       this.endAudioStream();
       await this.waitForHandleAfter(audioCutoff, timeoutMs);
       this.callbacks.onLog(`[Live] close with stored handle ${handleLabel(this.latestHandle)}`);
-    } catch (error: any) {
-      this.callbacks.onLog(`[Live] graceful close skipped: ${error.message || error}`);
+    } catch (error: unknown) {
+      this.callbacks.onLog(`[Live] graceful close skipped: ${errorMessage(error)}`);
     }
     try {
       this.session.close();
