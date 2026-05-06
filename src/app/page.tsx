@@ -23,13 +23,13 @@ export type ProviderOption = {
 };
 
 const VOICES = [
-  { id: "default", name: "系统默认" },
-  { id: "Kore", name: "Kore (女声)" },
-  { id: "Aoede", name: "Aoede (女声)" },
-  { id: "Leto", name: "Leto (女声)" },
-  { id: "Puck", name: "Puck (男声)" },
-  { id: "Charon", name: "Charon (男声)" },
-  { id: "Fenrir", name: "Fenrir (男声)" },
+  { id: "default", name: "✨ 系统自动优化" },
+  { id: "Aoede", name: "Aoede (成熟稳重女声)" },
+  { id: "Kore", name: "Kore (活力清亮女声)" },
+  { id: "Leto", name: "Leto (温柔知性女声)" },
+  { id: "Puck", name: "Puck (俏皮活泼男声)" },
+  { id: "Charon", name: "Charon (磁性深沉男声)" },
+  { id: "Fenrir", name: "Fenrir (稳重大气男声)" },
 ];
 
 type AcpEvent = {
