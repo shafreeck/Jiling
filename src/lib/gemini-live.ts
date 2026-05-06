@@ -57,20 +57,20 @@ export class GeminiLiveClient {
         this.onLog("WebSocket 已连接");
         
         const currentToken = GeminiLiveClient.getResumptionToken();
+        if (currentToken) {
+          this.onLog(`[协议] 尝试携带 Handle 续接会话: ${currentToken.substring(0, 15)}...`);
+        }
         const configMessage = {
-          setup: {
-            model: `models/${this.model}`,
-            generationConfig: {
-              responseModalities: ["AUDIO"],
-            },
-            contextWindowCompression: {
-              slidingWindow: {}
-            },
-            // 🚨 回归原有字段 sessionResumption / sessionToken，因为 3.1 仅识别此格式
-            sessionResumption: currentToken ? {
-              sessionToken: currentToken
-            } : {},
-            systemInstruction: {
+            setup: {
+              model: `models/${this.model}`,
+              generationConfig: {
+                responseModalities: ["AUDIO"],
+              },
+              // 🚨 尝试使用最标准的蛇形字段名和 token 键
+              session_resumption: currentToken ? {
+                token: currentToken
+              } : {},
+              systemInstruction: {
               parts: [{ text: `你叫“机灵”(Jiling)，是一个运行在 macOS 上的超强 AI 助手。
 交互准则：
 - 任务执行是异步的。当你调用 execute_agent_acp_task 后，请仅告知用户“已提交后台处理，请稍等”，**绝对禁止**编造结果。
