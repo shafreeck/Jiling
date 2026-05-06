@@ -23,6 +23,7 @@ export type ProviderOption = {
 };
 
 const VOICES = [
+  { id: "default", name: "系统默认" },
   { id: "Kore", name: "Kore (女声)" },
   { id: "Aoede", name: "Aoede (女声)" },
   { id: "Leto", name: "Leto (女声)" },
@@ -147,7 +148,7 @@ export default function JilingPage() {
   const [logs, setLogs] = useState<string[]>(["系统就绪，等待语音指令..."]);
   const [providers, setProviders] = useState<ProviderOption[]>([]);
   const [selectedProviderId, setSelectedProviderId] = useState<string>("openclaw");
-  const [selectedVoice, setSelectedVoice] = useState<string>("Kore");
+  const [selectedVoice, setSelectedVoice] = useState<string>("default");
 
   const selectedVoiceRef = useRef(selectedVoice);
   const selectedProviderIdRef = useRef(selectedProviderId);

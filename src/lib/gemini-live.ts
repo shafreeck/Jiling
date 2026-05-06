@@ -117,11 +117,13 @@ ${this.profile.userContext ? `<USER>\n${this.profile.userContext}\n</USER>\n` : 
       model: MODEL,
       config: {
         responseModalities: [Modality.AUDIO],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: this.voiceName },
+        ...(this.voiceName !== "default" ? {
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: this.voiceName },
+            },
           },
-        },
+        } : {}),
         inputAudioTranscription: {},
         outputAudioTranscription: {},
         sessionResumption: handle ? { handle } : {},
