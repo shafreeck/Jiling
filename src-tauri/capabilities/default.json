@@ -13,8 +13,8 @@
       "allow": [
         { "path": "$HOME/.openclaw" },
         { "path": "$HOME/.openclaw/**" },
-        { "path": "$HOME/.autoclaw" },
-        { "path": "$HOME/.autoclaw/**" },
+        { "path": "$HOME/.openclaw-autoclaw" },
+        { "path": "$HOME/.openclaw-autoclaw/**" },
         { "path": "$HOME/.hermes" },
         { "path": "$HOME/.hermes/**" }
       ]
@@ -24,8 +24,8 @@
       "allow": [
         { "path": "$HOME/.openclaw" },
         { "path": "$HOME/.openclaw/**" },
-        { "path": "$HOME/.autoclaw" },
-        { "path": "$HOME/.autoclaw/**" },
+        { "path": "$HOME/.openclaw-autoclaw" },
+        { "path": "$HOME/.openclaw-autoclaw/**" },
         { "path": "$HOME/.hermes" },
         { "path": "$HOME/.hermes/**" }
       ]
@@ -35,8 +35,8 @@
       "allow": [
         { "path": "$HOME/.openclaw" },
         { "path": "$HOME/.openclaw/**" },
-        { "path": "$HOME/.autoclaw" },
-        { "path": "$HOME/.autoclaw/**" },
+        { "path": "$HOME/.openclaw-autoclaw" },
+        { "path": "$HOME/.openclaw-autoclaw/**" },
         { "path": "$HOME/.hermes" },
         { "path": "$HOME/.hermes/**" }
       ]

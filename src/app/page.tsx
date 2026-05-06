@@ -247,8 +247,8 @@ export default function JilingPage() {
         if (await exists(home + "/.openclaw")) {
           detected.push({ id: "openclaw", name: "OpenClaw", adapter: new AcpProviderAdapter("openclaw", "OpenClaw", ".openclaw") });
         }
-        if (await exists(home + "/.autoclaw")) {
-          detected.push({ id: "autoclaw", name: "AutoClaw", adapter: new AcpProviderAdapter("autoclaw", "AutoClaw", ".autoclaw") });
+        if (await exists(home + "/.openclaw-autoclaw")) {
+          detected.push({ id: "autoclaw", name: "AutoClaw", adapter: new AcpProviderAdapter("autoclaw", "AutoClaw", ".openclaw-autoclaw") });
         }
         if (await exists(home + "/.hermes")) {
           detected.push({ id: "hermes", name: "Hermes", adapter: new AcpProviderAdapter("hermes", "Hermes", ".hermes") });
