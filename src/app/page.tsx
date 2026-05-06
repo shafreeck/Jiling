@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import type { FunctionResponse } from "@google/genai";
-import { Mic, MicOff, RotateCw, Terminal } from "lucide-react";
+import { Mic, MicOff, RotateCw, Terminal, Eraser } from "lucide-react";
 import { SmartOrb } from "@/components/SmartOrb";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -336,6 +336,12 @@ export default function JilingPage() {
     }
   };
 
+  const clearContext = () => {
+    if (!selectedProviderId) return;
+    GeminiLiveClient.clearStoredHandle(selectedProviderId);
+    addLog(`[系统] 已清除 ${selectedProviderId} 的上下文记忆。下次对话将重新开始。`);
+  };
+
   const runSelfTest = async () => {
     if (isBusy) return;
     setIsBusy(true);
@@ -483,6 +489,14 @@ export default function JilingPage() {
         <SmartOrb volume={volume} status={status} />
 
         <div className="flex items-center gap-4 rounded-full border border-white/10 bg-white/3 p-2">
+          <Button
+            onClick={clearContext}
+            title="清除记忆 (清空上下文)"
+            className="h-12 w-12 rounded-full bg-slate-500/10 text-slate-300 border border-slate-500/20 hover:bg-slate-500/20"
+          >
+            <Eraser className="h-5 w-5" />
+          </Button>
+
           <Button
             disabled={isBusy}
             onClick={isConnected ? forceReconnect : runSelfTest}
