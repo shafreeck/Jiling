@@ -74,6 +74,10 @@ export class GeminiLiveClient {
     GeminiLiveClient.setStoredHandle(providerId, null);
   }
 
+  static resetApiClient() {
+    GeminiLiveClient.ai = null;
+  }
+
   private async getAi() {
     if (!GeminiLiveClient.ai) {
       const apiKey = await invoke<string>("get_api_key");

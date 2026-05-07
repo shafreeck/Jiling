@@ -40,6 +40,8 @@ pub fn run() {
             acp::get_task_output,
             acp::get_agent_task_status,
             commands::get_api_key,
+            commands::get_api_key_status,
+            commands::set_api_key,
             commands::capture_screen
         ])
         .run(tauri::generate_context!())

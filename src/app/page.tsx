@@ -9,6 +9,7 @@ import {
   ChevronDown,
   CircleStop,
   Eraser,
+  KeyRound,
   ListChecks,
   Mic,
   Minimize2,
@@ -17,6 +18,7 @@ import {
   RotateCw,
   Sparkles,
   Terminal,
+  X,
 } from "lucide-react";
 import { SmartOrb } from "@/components/SmartOrb";
 import { Button } from "@/components/ui/button";
@@ -29,6 +31,11 @@ import type { AgentProviderAdapter, AgentRuntimeProfile, JilingTaskOutput } from
 type VoiceStatus = "idle" | "listening" | "thinking" | "speaking";
 type ToolCall = NonNullable<LiveMessage["toolCall"]>;
 type AgentTaskPhase = "submitted" | "running" | "completed" | "failed" | "cancelled";
+
+type ApiKeyStatus = {
+  configured: boolean;
+  source?: string | null;
+};
 
 type AgentTaskView = {
   runId: string;
@@ -354,6 +361,12 @@ export default function JilingPage() {
   const [showLogs, setShowLogs] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [agentTasks, setAgentTasks] = useState<AgentTaskView[]>([]);
+  const [apiKeyConfigured, setApiKeyConfigured] = useState<boolean | null>(null);
+  const [apiKeySource, setApiKeySource] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
 
   const selectedVoiceRef = useRef(selectedVoice);
   const selectedProviderIdRef = useRef(selectedProviderId);
@@ -384,6 +397,31 @@ export default function JilingPage() {
 
   const addLog = (message: string) => {
     setLogs((previous) => [...previous.slice(-80), `[${new Date().toLocaleTimeString()}] ${message}`]);
+  };
+
+  const refreshApiKeyStatus = async () => {
+    const status = await invoke<ApiKeyStatus>("get_api_key_status");
+    setApiKeyConfigured(status.configured);
+    setApiKeySource(status.source || null);
+    return status;
+  };
+
+  const saveApiKey = async () => {
+    setIsSavingSettings(true);
+    setSettingsError(null);
+
+    try {
+      await invoke("set_api_key", { apiKey: apiKeyInput });
+      GeminiLiveClient.resetApiClient();
+      const status = await refreshApiKeyStatus();
+      setApiKeyInput("");
+      setShowSettings(false);
+      addLog(status.configured ? "[设置] Gemini API Key 已保存" : "[设置] Gemini API Key 已清除");
+    } catch (error: unknown) {
+      setSettingsError(errorMessage(error));
+    } finally {
+      setIsSavingSettings(false);
+    }
   };
 
   const clearGoAwayTimer = () => {
@@ -574,12 +612,39 @@ export default function JilingPage() {
     probeProviders();
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    void invoke<ApiKeyStatus>("get_api_key_status")
+      .then((keyStatus) => {
+        if (cancelled) return;
+        setApiKeyConfigured(keyStatus.configured);
+        setApiKeySource(keyStatus.source || null);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setApiKeyConfigured(false);
+        addLog(`[设置] 读取 API Key 状态失败: ${errorMessage(error)}`);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const startConversation = async () => {
     if (startingRef.current) return;
     startingRef.current = true;
     setIsBusy(true);
 
     try {
+      const keyStatus = await refreshApiKeyStatus();
+      if (!keyStatus.configured) {
+        setShowSettings(true);
+        setStatus("idle");
+        addLog("[设置] 请先在应用设置中填写 Gemini API Key");
+        return;
+      }
+
       clearGoAwayTimer();
       serverReconnectRef.current = false;
       await cleanupAudio();
@@ -611,6 +676,13 @@ export default function JilingPage() {
       setIsConnected(true);
       setStatus("listening");
       addLog("[系统] 语音会话已就绪");
+    } catch (error: unknown) {
+      setStatus("idle");
+      setIsConnected(false);
+      addLog(`[系统] 启动失败: ${errorMessage(error)}`);
+      if (errorMessage(error).includes("GEMINI_API_KEY")) {
+        setShowSettings(true);
+      }
     } finally {
       startingRef.current = false;
       setIsBusy(false);
@@ -924,6 +996,22 @@ export default function JilingPage() {
 
             <Button
               type="button"
+              title={apiKeyConfigured ? `API Key：${apiKeySource || "已配置"}` : "设置 API Key"}
+              onClick={() => {
+                setSettingsError(null);
+                setShowSettings(true);
+              }}
+              className={`h-10 w-10 rounded-full border p-0 ${
+                apiKeyConfigured
+                  ? "border-white/8 bg-white/[0.045] text-white/62 hover:bg-white/10"
+                  : "border-amber-200/24 bg-amber-200/10 text-amber-100 hover:bg-amber-200/16"
+              }`}
+            >
+              <KeyRound className="h-4 w-4" />
+            </Button>
+
+            <Button
+              type="button"
               title={focusMode ? "展开工作层" : "收起工作层"}
               onClick={() => setFocusMode((value) => !value)}
               className="h-10 w-10 rounded-full border border-white/8 bg-white/[0.045] p-0 text-white/62 hover:bg-white/10"
@@ -1057,6 +1145,81 @@ export default function JilingPage() {
             </aside>
           )}
         </section>
+
+        {showSettings && (
+          <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/54 px-6 backdrop-blur-xl">
+            <div className="w-full max-w-md rounded-lg border border-white/10 bg-[#111114]/92 p-5 shadow-[0_28px_120px_rgba(0,0,0,0.62)]">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2 text-base text-white/88">
+                    <KeyRound className="h-4 w-4 text-cyan-100/70" />
+                    <span>Gemini API Key</span>
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-white/45">
+                    保存后会优先使用应用设置；环境变量仍可作为开发兜底。
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  title="关闭"
+                  disabled={isSavingSettings}
+                  onClick={() => setShowSettings(false)}
+                  className="h-8 w-8 rounded-full bg-white/[0.04] p-0 text-white/48 hover:bg-white/10"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+
+              <div className="mt-5 space-y-3">
+                <input
+                  type="password"
+                  value={apiKeyInput}
+                  onChange={(event) => setApiKeyInput(event.target.value)}
+                  placeholder={apiKeyConfigured ? "已配置，输入新 Key 可覆盖" : "粘贴 Gemini API Key"}
+                  className="h-11 w-full rounded-md border border-white/10 bg-black/26 px-3 text-sm text-white/82 outline-none transition placeholder:text-white/28 focus:border-cyan-100/36"
+                />
+                <div className="flex items-center justify-between text-xs text-white/36">
+                  <span>{apiKeyConfigured ? `当前来源：${apiKeySource || "应用设置"}` : "当前未配置"}</span>
+                  {settingsError && <span className="text-rose-200/80">{settingsError}</span>}
+                </div>
+              </div>
+
+              <div className="mt-5 flex items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  disabled={isSavingSettings || (!apiKeyConfigured && !apiKeyInput.trim())}
+                  onClick={saveApiKey}
+                  className="h-9 rounded-full bg-white px-4 text-sm text-black hover:bg-cyan-100"
+                >
+                  {isSavingSettings ? "保存中" : "保存"}
+                </Button>
+                {apiKeyConfigured && (
+                  <Button
+                    type="button"
+                    disabled={isSavingSettings}
+                    onClick={() => {
+                      setApiKeyInput("");
+                      setSettingsError(null);
+                      invoke("set_api_key", { apiKey: "" })
+                        .then(() => {
+                          GeminiLiveClient.resetApiClient();
+                          return refreshApiKeyStatus();
+                        })
+                        .then((status) => {
+                          addLog(status.configured ? "[设置] 已清除应用设置，继续使用环境变量" : "[设置] Gemini API Key 已清除");
+                          setShowSettings(false);
+                        })
+                        .catch((error: unknown) => setSettingsError(errorMessage(error)));
+                    }}
+                    className="h-9 rounded-full bg-white/[0.045] px-4 text-sm text-white/52 hover:bg-white/10"
+                  >
+                    清除
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </main>
   );

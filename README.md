@@ -8,11 +8,9 @@ Jiling is a local desktop voice shell for AI agents. It uses Gemini Live for rea
 - Node.js and npm
 - Rust toolchain
 - Tauri CLI dependencies
-- A Gemini API key in `.env`
+- A Gemini API key
 
-```bash
-GEMINI_API_KEY=your_key_here
-```
+Set the Gemini API key from the app settings button after launch. For local development, `GEMINI_API_KEY` in `.env` is still supported as a fallback.
 
 `.env` is intentionally ignored by Git.
 
