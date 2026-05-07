@@ -1,36 +1,63 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Jiling / 机灵
 
-## Getting Started
+Jiling is a local desktop voice shell for AI agents. It uses Gemini Live for real-time voice interaction and delegates longer-running work to local agent runtimes such as OpenClaw and AutoClaw through ACP.
 
-First, run the development server:
+## Requirements
+
+- macOS
+- Node.js and npm
+- Rust toolchain
+- Tauri CLI dependencies
+- A Gemini API key in `.env`
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+GEMINI_API_KEY=your_key_here
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+`.env` is intentionally ignored by Git.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Development
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Start the desktop app with Tauri:
 
-## Learn More
+```bash
+npm install
+npm run tauri dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+Do not start Jiling with `npm run dev` as the main workflow. That command only starts the Next.js frontend server on port `3333`; the app depends on the Tauri shell for native APIs, local filesystem access, microphone/audio behavior, and ACP integration.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Tauri is configured to run the frontend dev server automatically:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```json
+{
+  "devUrl": "http://localhost:3333",
+  "beforeDevCommand": "npm run dev"
+}
+```
 
-## Deploy on Vercel
+## Local Agent Support
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Jiling currently detects local provider directories:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `~/.openclaw`
+- `~/.openclaw-autoclaw`
+- `~/.hermes`
+
+OpenClaw is the primary supported provider. AutoClaw is supported through its OpenClaw-compatible ACP gateway, with compatibility handling for its older session and device-token layout.
+
+## Useful Commands
+
+```bash
+npm run lint
+npx tsc --noEmit
+cd src-tauri && cargo check
+```
+
+## Build
+
+```bash
+npm run tauri build
+```
+
+The frontend is a Next.js app, but Jiling is shipped and tested as a Tauri desktop application.
