@@ -125,7 +125,6 @@ ${this.profile.userContext ? `<USER>\n${this.profile.userContext}\n</USER>\n` : 
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
-          languageCode: "zh-CN",
           ...(!isNone ? {
             voiceConfig: {
               prebuiltVoiceConfig: { voiceName: this.voiceName },

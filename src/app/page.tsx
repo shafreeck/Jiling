@@ -314,7 +314,7 @@ export default function JilingPage() {
 
     try {
       await cleanupAudio();
-      const context = new AudioContext();
+      const context = new AudioContext({ sampleRate: 24000 });
       audioContextRef.current = context;
 
       const streamer = new AudioStreamer(context);
