@@ -123,13 +123,16 @@ ${this.profile.userContext ? `<USER>\n${this.profile.userContext}\n</USER>\n` : 
     this.session = await ai.live.connect({
       model: MODEL,
       config: {
-        responseModalities: [Modality.AUDIO],
-        speechConfig: {
-          ...(!isNone ? {
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: this.voiceName },
-            },
-          } : {}),
+        generationConfig: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: {
+            languageCode: "cmn-CN",
+            ...(!isNone ? {
+              voiceConfig: {
+                prebuiltVoiceConfig: { voiceName: this.voiceName },
+              },
+            } : {}),
+          },
         },
         inputAudioTranscription: {},
         outputAudioTranscription: {},
