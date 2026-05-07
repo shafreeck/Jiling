@@ -148,6 +148,16 @@ function isTerminalTaskStatus(status: string) {
   return ["completed", "complete", "success", "succeeded", "end"].includes(status.toLowerCase());
 }
 
+function parseLiveDurationMs(value?: string) {
+  if (!value) return 3000;
+  const secondsMatch = value.match(/^(\d+(?:\.\d+)?)s$/);
+  if (secondsMatch) return Number(secondsMatch[1]) * 1000;
+
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) return numeric * 1000;
+  return 3000;
+}
+
 const DEFAULT_AUDIO_FEATURES: AudioFeatures = {
   energy: 0,
   bass: 0,
@@ -352,6 +362,8 @@ export default function JilingPage() {
 
   const statusRef = useRef<VoiceStatus>("idle");
   const reconnectWantedRef = useRef(false);
+  const serverReconnectRef = useRef(false);
+  const goAwayTimerRef = useRef<number | null>(null);
   const startingRef = useRef(false);
   const clientRef = useRef<GeminiLiveClient | null>(null);
   const adapterRef = useRef<AgentProviderAdapter | null>(null);
@@ -372,6 +384,45 @@ export default function JilingPage() {
 
   const addLog = (message: string) => {
     setLogs((previous) => [...previous.slice(-80), `[${new Date().toLocaleTimeString()}] ${message}`]);
+  };
+
+  const clearGoAwayTimer = () => {
+    if (goAwayTimerRef.current !== null) {
+      window.clearTimeout(goAwayTimerRef.current);
+      goAwayTimerRef.current = null;
+    }
+  };
+
+  const scheduleServerReconnect = (timeLeft?: string) => {
+    if (serverReconnectRef.current) return;
+    serverReconnectRef.current = true;
+
+    const timeLeftMs = parseLiveDurationMs(timeLeft);
+    const delayMs = Math.max(0, Math.min(timeLeftMs - 1500, 8000));
+    addLog(`[Live] 收到服务端 goAway，${Math.round(timeLeftMs / 1000)} 秒内预重连`);
+
+    clearGoAwayTimer();
+    goAwayTimerRef.current = window.setTimeout(async () => {
+      goAwayTimerRef.current = null;
+      const client = clientRef.current;
+      if (!client || statusRef.current === "idle") {
+        serverReconnectRef.current = false;
+        return;
+      }
+
+      setIsBusy(true);
+      reconnectWantedRef.current = true;
+      addLog("[系统] 服务端连接即将到期，正在无感续接...");
+      try {
+        stopMic();
+        await client.closeGracefully(5000);
+      } catch (error: unknown) {
+        addLog(`[系统] 预重连失败: ${errorMessage(error)}`);
+        serverReconnectRef.current = false;
+      } finally {
+        setIsBusy(false);
+      }
+    }, delayMs);
   };
 
   const updateAudioFeatures = (samples: Float32Array, sampleRate: number) => {
@@ -529,6 +580,8 @@ export default function JilingPage() {
     setIsBusy(true);
 
     try {
+      clearGoAwayTimer();
+      serverReconnectRef.current = false;
       await cleanupAudio();
       const context = new AudioContext({ sampleRate: 24000 });
       audioContextRef.current = context;
@@ -566,6 +619,8 @@ export default function JilingPage() {
 
   const stopConversation = async () => {
     reconnectWantedRef.current = false;
+    serverReconnectRef.current = false;
+    clearGoAwayTimer();
     setIsBusy(true);
     setStatus("idle");
     setIsConnected(false);
@@ -615,6 +670,10 @@ export default function JilingPage() {
   };
 
   const handleLiveMessage = (message: LiveMessage) => {
+    if (message.goAway) {
+      scheduleServerReconnect(message.goAway.timeLeft);
+    }
+
     const content = message.serverContent;
     if (content) {
       if (content.interrupted) {
@@ -786,6 +845,8 @@ export default function JilingPage() {
   useEffect(() => {
     return () => {
       reconnectWantedRef.current = false;
+      serverReconnectRef.current = false;
+      clearGoAwayTimer();
       stopMic();
       clientRef.current?.closeNow();
       audioContextRef.current?.close().catch(() => {});
