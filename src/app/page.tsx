@@ -968,7 +968,7 @@ export default function JilingPage() {
                 disabled={isBusy || isConnected}
                 value={selectedVoice}
                 onChange={(event) => setSelectedVoice(event.target.value)}
-                className="h-10 w-40 appearance-none rounded-full border border-white/8 bg-white/[0.045] pl-9 pr-9 text-sm text-white/64 outline-none backdrop-blur-xl transition focus:border-white/20 disabled:opacity-45"
+                className="h-10 w-40 appearance-none rounded-full border border-white/8 bg-white/4.5 pl-9 pr-9 text-sm text-white/64 outline-none backdrop-blur-xl transition focus:border-white/20 disabled:opacity-45"
               >
                 {VOICES.map((voice) => (
                   <option key={voice.id} value={voice.id}>{voice.name}</option>
@@ -984,7 +984,7 @@ export default function JilingPage() {
                   disabled={isBusy || isConnected}
                   value={selectedProviderId}
                   onChange={(event) => setSelectedProviderId(event.target.value)}
-                  className="h-10 w-36 appearance-none rounded-full border border-white/8 bg-white/[0.045] pl-9 pr-9 text-sm text-white/64 outline-none backdrop-blur-xl transition focus:border-white/20 disabled:opacity-45"
+                  className="h-10 w-36 appearance-none rounded-full border border-white/8 bg-white/4.5 pl-9 pr-9 text-sm text-white/64 outline-none backdrop-blur-xl transition focus:border-white/20 disabled:opacity-45"
                 >
                   {providers.map((provider) => (
                     <option key={provider.id} value={provider.id}>{providerLabel(provider.id, provider.name)}</option>
@@ -1003,7 +1003,7 @@ export default function JilingPage() {
               }}
               className={`h-10 w-10 rounded-full border p-0 ${
                 apiKeyConfigured
-                  ? "border-white/8 bg-white/[0.045] text-white/62 hover:bg-white/10"
+                  ? "border-white/8 bg-white/4.5 text-white/62 hover:bg-white/10"
                   : "border-amber-200/24 bg-amber-200/10 text-amber-100 hover:bg-amber-200/16"
               }`}
             >
@@ -1014,7 +1014,7 @@ export default function JilingPage() {
               type="button"
               title={focusMode ? "展开工作层" : "收起工作层"}
               onClick={() => setFocusMode((value) => !value)}
-              className="h-10 w-10 rounded-full border border-white/8 bg-white/[0.045] p-0 text-white/62 hover:bg-white/10"
+              className="h-10 w-10 rounded-full border border-white/8 bg-white/4.5 p-0 text-white/62 hover:bg-white/10"
             >
               {focusMode ? <PanelRight className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
             </Button>
@@ -1023,7 +1023,7 @@ export default function JilingPage() {
 
         <section className="relative z-10 grid min-h-0 flex-1 grid-cols-1 gap-5 pt-4 lg:grid-cols-[1fr_auto]">
           <div className="voice-surface relative flex min-h-0 flex-col items-center justify-center overflow-hidden">
-            <div className="absolute left-1/2 top-[14%] flex -translate-x-1/2 items-center gap-2 rounded-full bg-white/[0.045] px-4 py-2 text-xs text-white/48 backdrop-blur-2xl">
+            <div className="absolute left-1/2 top-[14%] flex -translate-x-1/2 items-center gap-2 rounded-full bg-white/4.5 px-4 py-2 text-xs text-white/48 backdrop-blur-2xl">
               <Radio className="h-3.5 w-3.5 text-cyan-100/64" />
               <span>{currentProviderName}</span>
             </div>
@@ -1034,7 +1034,7 @@ export default function JilingPage() {
               <Button
                 onClick={clearContext}
                 title="清除会话"
-                className="h-12 w-12 rounded-full border border-white/8 bg-white/[0.045] p-0 text-white/48 hover:bg-white/10"
+                className="h-12 w-12 rounded-full border border-white/8 bg-white/4.5 p-0 text-white/48 hover:bg-white/10"
               >
                 <Eraser className="h-5 w-5" />
               </Button>
@@ -1056,7 +1056,7 @@ export default function JilingPage() {
                 disabled={isBusy}
                 onClick={isConnected ? forceReconnect : runSelfTest}
                 title={isConnected ? "重新连接" : "恢复自检"}
-                className="h-12 w-12 rounded-full border border-white/8 bg-white/[0.045] p-0 text-white/48 hover:bg-white/10"
+                className="h-12 w-12 rounded-full border border-white/8 bg-white/4.5 p-0 text-white/48 hover:bg-white/10"
               >
                 {isConnected ? <RotateCw className="h-5 w-5" /> : <Activity className="h-5 w-5" />}
               </Button>
@@ -1084,8 +1084,8 @@ export default function JilingPage() {
                       onClick={() => setSelectedTaskId(task.runId)}
                       className={`w-full rounded-md px-3 py-3 text-left transition ${
                         selectedTask?.runId === task.runId
-                          ? "bg-white/[0.075]"
-                          : "bg-transparent hover:bg-white/[0.045]"
+                          ? "bg-white/7.5"
+                          : "bg-transparent hover:bg-white/4.5"
                       }`}
                     >
                       <div className="flex items-center gap-2">
@@ -1115,7 +1115,7 @@ export default function JilingPage() {
                   <span className="max-w-[130px] truncate text-xs text-white/30">{selectedTask?.runId || "等待任务"}</span>
                 </div>
                 <ScrollArea className="min-h-0 flex-1 px-4 pb-4">
-                  <pre className="whitespace-pre-wrap break-words font-sans text-[13px] leading-6 text-white/62">{latestOutput}</pre>
+                  <pre className="whitespace-pre-wrap wrap-break-word font-sans text-[13px] leading-6 text-white/62">{latestOutput}</pre>
                 </ScrollArea>
               </div>
 
@@ -1164,7 +1164,7 @@ export default function JilingPage() {
                   title="关闭"
                   disabled={isSavingSettings}
                   onClick={() => setShowSettings(false)}
-                  className="h-8 w-8 rounded-full bg-white/[0.04] p-0 text-white/48 hover:bg-white/10"
+                  className="h-8 w-8 rounded-full bg-white/4 p-0 text-white/48 hover:bg-white/10"
                 >
                   <X className="h-4 w-4" />
                 </Button>
@@ -1211,7 +1211,7 @@ export default function JilingPage() {
                         })
                         .catch((error: unknown) => setSettingsError(errorMessage(error)));
                     }}
-                    className="h-9 rounded-full bg-white/[0.045] px-4 text-sm text-white/52 hover:bg-white/10"
+                    className="h-9 rounded-full bg-white/4.5 px-4 text-sm text-white/52 hover:bg-white/10"
                   >
                     清除
                   </Button>
