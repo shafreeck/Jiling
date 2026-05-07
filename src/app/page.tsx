@@ -23,14 +23,36 @@ export type ProviderOption = {
 };
 
 const VOICES = [
-  { id: "Aoede", name: "Aoede (知性女声 - 推荐)" },
-  { id: "Leda", name: "Leda (活力女声 - 推荐)" },
+  { id: "none", name: "✨ 官方原生 (最自然/不指定角色)" },
+  { id: "Aoede", name: "Aoede (缪斯女声)" },
+  { id: "Leda", name: "Leda (青春女声)" },
   { id: "Kore", name: "Kore (坚定女声)" },
   { id: "Achernar", name: "Achernar (温柔女声)" },
-  { id: "Charon", name: "Charon (博学男声 - 推荐)" },
+  { id: "Autonoe", name: "Autonoe (阳光女声)" },
+  { id: "Despina", name: "Despina (友好女声)" },
+  { id: "Erinome", name: "Erinome (清晰女声)" },
+  { id: "Laomedeia", name: "Laomedeia (活泼女声)" },
+  { id: "Pulcherrima", name: "Pulcherrima (华丽女声)" },
+  { id: "Sadachbia", name: "Sadachbia (生动女声)" },
+  { id: "Schedar", name: "Schedar (平稳女声)" },
+  { id: "Sulafat", name: "Sulafat (宁静女声)" },
+  { id: "Vindemiatrix", name: "Vindemiatrix (明亮女声)" },
+  { id: "Callirrhoe", name: "Callirrhoe (随性女声)" },
+  { id: "Enceladus", name: "Enceladus (柔和女声)" },
+  { id: "Charon", name: "Charon (博学男声)" },
   { id: "Sadaltager", name: "Sadaltager (深沉男声)" },
   { id: "Puck", name: "Puck (活力男声)" },
   { id: "Fenrir", name: "Fenrir (稳重男声)" },
+  { id: "Orus", name: "Orus (成熟男声)" },
+  { id: "Zephyr", name: "Zephyr (阳光男声)" },
+  { id: "Iapetus", name: "Iapetus (清晰男声)" },
+  { id: "Umbriel", name: "Umbriel (沉稳男声)" },
+  { id: "Algieba", name: "Algieba (流畅男声)" },
+  { id: "Achird", name: "Achird (友好男声)" },
+  { id: "Algenib", name: "Algenib (浑厚男声)" },
+  { id: "Gacrux", name: "Gacrux (成熟男声)" },
+  { id: "Zubenelgenubi", name: "Zubenelgenubi (随性男声)" },
+  { id: "Alnilam", name: "Alnilam (深邃男声)" },
 ];
 
 type AcpEvent = {
@@ -149,7 +171,7 @@ export default function JilingPage() {
   const [logs, setLogs] = useState<string[]>(["系统就绪，等待语音指令..."]);
   const [providers, setProviders] = useState<ProviderOption[]>([]);
   const [selectedProviderId, setSelectedProviderId] = useState<string>("openclaw");
-  const [selectedVoice, setSelectedVoice] = useState<string>("Aoede");
+  const [selectedVoice, setSelectedVoice] = useState<string>("none");
 
   const selectedVoiceRef = useRef(selectedVoice);
   const selectedProviderIdRef = useRef(selectedProviderId);
