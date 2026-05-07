@@ -155,8 +155,13 @@ export class AcpProviderAdapter implements AgentProviderAdapter {
   }
 
   async waitTask(ref: AgentTaskRef, timeoutMs?: number): Promise<AgentTaskSnapshot> {
-    // For now, rely on events. `waitTask` could wrap a timeout logic over events.
-    return { status: "running" };
+    void ref;
+    void timeoutMs;
+    const snapshot = await invoke<{
+      status: string;
+      output: string;
+    }>("get_agent_task_status", { runId: ref.runId });
+    return { status: snapshot.status, output: snapshot.output || undefined };
   }
 
   async abortTask(ref: AgentTaskRef): Promise<AgentAbortResult> {

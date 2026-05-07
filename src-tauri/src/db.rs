@@ -2,6 +2,17 @@ use rusqlite::{params, Connection, Result};
 use std::fs;
 use std::path::PathBuf;
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct TaskSnapshot {
+    pub run_id: String,
+    pub agent_id: String,
+    pub status: String,
+    pub message: String,
+    pub output: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 pub struct Db {
     conn: Connection,
 }
@@ -79,6 +90,24 @@ impl Db {
             "SELECT output FROM tasks WHERE run_id = ?",
             params![run_id],
             |row| row.get(0),
+        )
+    }
+
+    pub fn get_task_snapshot(&self, run_id: &str) -> Result<TaskSnapshot> {
+        self.conn.query_row(
+            "SELECT run_id, agent_id, status, message, output, created_at, updated_at FROM tasks WHERE run_id = ?",
+            params![run_id],
+            |row| {
+                Ok(TaskSnapshot {
+                    run_id: row.get(0)?,
+                    agent_id: row.get(1)?,
+                    status: row.get(2)?,
+                    message: row.get(3)?,
+                    output: row.get(4)?,
+                    created_at: row.get(5)?,
+                    updated_at: row.get(6)?,
+                })
+            },
         )
     }
 }

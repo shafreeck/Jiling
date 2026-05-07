@@ -347,3 +347,12 @@ pub async fn get_task_output(
     let db = state.db.lock().await;
     db.get_task_output(&run_id).map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub async fn get_agent_task_status(
+    state: tauri::State<'_, Arc<GlobalAcpManager>>,
+    run_id: String,
+) -> Result<crate::db::TaskSnapshot, String> {
+    let db = state.db.lock().await;
+    db.get_task_snapshot(&run_id).map_err(|e| e.to_string())
+}

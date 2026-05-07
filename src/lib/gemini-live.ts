@@ -93,8 +93,6 @@ export class GeminiLiveClient {
         : "[Live] start new resumable session"
     );
 
-    const displayName = this.profile.displayName ? `名为“${this.profile.displayName}”` : "运行在 macOS 上";
-    
     const maleVoices = ["Puck", "Charon", "Fenrir", "Sadaltager", "Orus", "Zephyr", "Iapetus", "Umbriel", "Algieba", "Achird", "Algenib", "Gacrux", "Zubenelgenubi", "Alnilam"];
     const isMale = maleVoices.includes(this.voiceName);
     const genderText = isMale ? "男性" : "女性";
@@ -102,6 +100,7 @@ export class GeminiLiveClient {
 
     const systemInstructionText = `你是一个本地 AI Agent。
 请务必使用标准、纯正、地道的中文普通话进行语音对话。你的发音应当自然、流畅，表现得像一个土生土长的中国${genderText}，严禁带有任何不自然的“外国口音”或机械感。
+你的底层角色文本里可能包含 emoji、颜文字、装饰符号或舞台表情，例如“🔮”“💨”。语音输出时不要朗读这些符号，也不要说“水晶球表情”“吹气表情”之类的描述；直接忽略它们，用自然语气、停顿或语调表达相同情绪即可。
 
 你应当始终遵循 <IDENTITY> 和 <SOUL> 设定的角色身份与用户对话。
 如果用户问“你是谁”，请按 <IDENTITY> 的设定回答。
@@ -113,8 +112,11 @@ ${this.profile.userContext ? `<USER>\n${this.profile.userContext}\n</USER>\n` : 
 你有两个执行形态：实时语音外壳（即现在的你）和后台任务内核。
 当需要长任务、代码、文件操作时，调用 execute_agent_acp_task 进入后台模式。
 你不能把后台执行者表达成另一个助手，那是你的后台形态。
-调用 execute_agent_acp_task 后，只告知用户已提交后台处理，不要编造结果。
-任务完成后，系统会注入结果，你再自然简要地播报。`;
+调用 execute_agent_acp_task 的返回值只代表“后台任务已提交”，绝不代表任务完成。
+在收到明确的系统事件“背景任务执行完毕”之前，你只能说任务正在后台处理或已经提交，不能说“完成了”“已经处理好了”“我已经改好了”，也不能编造执行结果。
+当用户询问后台任务是否完成、进度如何、结果是什么时，必须先调用 get_agent_task_status 查询真实状态；如果状态不是 completed/end/success，必须如实说明仍在处理中。
+当用户要求取消、终止、停止后台任务时，必须调用 abort_agent_task；该工具返回只代表已发出终止请求，不代表任务已经终止，之后仍应查询状态确认。
+任务完成后，系统会注入结果，你再自然、充分、可中断地播报。`;
 
     this.callbacks.onLog("=== 注入的身份上下文 ===");
     this.callbacks.onLog(systemInstructionText);
@@ -145,19 +147,30 @@ ${this.profile.userContext ? `<USER>\n${this.profile.userContext}\n</USER>\n` : 
             functionDeclarations: [
               {
                 name: "execute_agent_acp_task",
-                description: "执行本地 AI 代理处理复杂任务。",
+                description: "提交一个本地 AI 代理后台任务。注意：函数返回只表示提交成功，不表示任务完成；必须等待后续系统事件“背景任务执行完毕”才能汇报结果。",
                 parameters: {
                   type: Type.OBJECT,
                   properties: {
                     agent: { type: Type.STRING, description: "代理 ID，必须设为 main" },
-                    task: { type: Type.STRING, description: "需要代理执行的任务描述" },
+                    task: { type: Type.STRING, description: "需要代理后台执行的任务描述" },
                   },
                   required: ["agent", "task"],
                 },
               },
               {
+                name: "get_agent_task_status",
+                description: "查询本地代理后台任务的真实状态和已知输出。用户询问任务是否完成、进度如何、结果是什么时必须调用这个工具，不允许凭记忆猜测。",
+                parameters: {
+                  type: Type.OBJECT,
+                  properties: {
+                    run_id: { type: Type.STRING, description: "任务 runId" },
+                  },
+                  required: ["run_id"],
+                },
+              },
+              {
                 name: "abort_agent_task",
-                description: "中止正在运行的本地代理任务。",
+                description: "请求终止正在运行的本地代理任务。注意：返回只表示终止请求已发出，不保证任务已经停止；需要再查询状态确认。",
                 parameters: {
                   type: Type.OBJECT,
                   properties: {
