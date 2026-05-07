@@ -830,7 +830,9 @@ export default function JilingPage() {
         }
         functionResponses.push({ name: call.name, id: call.id, response: { result } });
       } catch (error) {
-        functionResponses.push({ name: call.name, id: call.id, response: { error: String(error) } });
+        const message = errorMessage(error);
+        addLog(`[工具] 执行失败: ${message}`);
+        functionResponses.push({ name: call.name, id: call.id, response: { error: message } });
       }
     }
 

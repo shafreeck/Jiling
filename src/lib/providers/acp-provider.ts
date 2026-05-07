@@ -21,6 +21,8 @@ type AcpEvent = {
     data: {
       text?: string;
       phase?: string;
+      error?: string;
+      message?: string;
     };
   };
 };
@@ -147,6 +149,10 @@ export class AcpProviderAdapter implements AgentProviderAdapter {
             if (handlers.onFailed) {
               handlers.onFailed({ error: String(error), recoverable: false });
             }
+          }
+        } else if (data.phase === "error") {
+          if (handlers.onFailed) {
+            handlers.onFailed({ error: data.error || data.message || "任务执行失败。", recoverable: false });
           }
         }
       }
