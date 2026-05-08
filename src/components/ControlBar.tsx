@@ -10,8 +10,8 @@ import {
   MessageSquare, 
   MessageSquareOff,
   LogOut,
-  Phone,
-  PhoneOff,
+  AudioLines,
+  X,
   MoreVertical
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -145,14 +145,14 @@ export function ControlBar({
                 }`}
               >
                 {isConnected ? (
-                  <PhoneOff className="h-5 w-5" />
+                  <X className="h-5 w-5" />
                 ) : (
-                  <Phone className={`h-5 w-5 ${isBusy ? "animate-pulse" : ""}`} />
+                  <AudioLines className={`h-5 w-5 ${isBusy ? "animate-pulse" : ""}`} />
                 )}
               </Button>
             }
           />
-          <TooltipContent><p>{isConnected ? "结束通话" : "开始通话"}</p></TooltipContent>
+          <TooltipContent><p>{isConnected ? "停止交互" : "开始交互"}</p></TooltipContent>
         </Tooltip>
       </motion.div>
     </TooltipProvider>

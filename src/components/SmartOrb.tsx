@@ -372,8 +372,8 @@ export function SmartOrb({ volume = 0, features = DEFAULT_FEATURES, status = "id
     <div
       className={
         compact
-          ? "relative h-[46vmin] min-h-[360px] max-h-[560px] w-[88vmin] min-w-[720px] max-w-[1080px]"
-          : "relative h-[320px] w-[820px]"
+          ? "relative h-[120px] w-[280px] scale-75 origin-bottom-right opacity-60 hover:opacity-100 transition-opacity"
+          : "relative h-[46vmin] min-h-[360px] max-h-[560px] w-[88vmin] min-w-[720px] max-w-[1080px]"
       }
     >
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />

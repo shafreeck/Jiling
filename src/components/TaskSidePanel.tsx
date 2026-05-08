@@ -116,7 +116,7 @@ export function TaskSidePanel({
 
               {/* Task Detail */}
               {selectedTask && (
-                <div className="flex flex-1 flex-col overflow-hidden bg-white/[0.02]">
+                <div className="flex flex-1 flex-col overflow-hidden bg-white/2">
                   <ScrollArea className="flex-1">
                     <div className="p-6 space-y-6">
                       <div>

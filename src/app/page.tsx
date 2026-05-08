@@ -25,6 +25,12 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { SmartOrb } from "@/components/SmartOrb";
 import { Button } from "@/components/ui/button";
+import { 
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -1120,6 +1126,13 @@ export default function JilingPage() {
     setStatus("listening");
   };
 
+  const clearSessionHandle = () => {
+    if (confirm("确定要擦除当前智能体的记忆（Session Handle）吗？这会导致下一次连接变为全新会话。")) {
+      GeminiLiveClient.clearStoredHandle(selectedProviderId);
+      addLog(`[系统] 已擦除 ${selectedProviderId} 的记忆 Handle`);
+    }
+  };
+
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: "auto" });
   }, [logs]);
@@ -1150,69 +1163,94 @@ export default function JilingPage() {
   const latestOutput = selectedTask?.output || selectedTask?.progress.at(-1) || "本地代理的完整输出会显示在这里。";
   const currentProviderName = providerLabel(selectedProviderId, providers.find((provider) => provider.id === selectedProviderId)?.name);
 
+  const readingModeContent = (isTaskPinned && activeTask?.output) ? (
+    <div className="flex h-full w-full flex-col overflow-hidden">
+      {/* Header Strip */}
+      <div className="flex items-center justify-between border-b border-white/5 bg-white/5 px-6 py-2 backdrop-blur-md">
+        <div className="flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-primary/20 bg-primary/10">
+            <ListChecks className="h-3.5 w-3.5 text-primary" />
+          </div>
+          <h3 className="text-base font-bold text-white">{activeTask?.title}</h3>
+        </div>
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          onClick={() => setIsTaskPinned(false)}
+          className="h-7 rounded-full bg-white/5 px-3 text-[10px] text-white/60 hover:bg-white/10 hover:text-white transition-all"
+        >
+          <PinOff className="mr-1.5 h-3 w-3" />
+          退出
+        </Button>
+      </div>
+
+      {/* Main Content Area */}
+      <div className="relative flex-1 min-h-0 overflow-hidden">
+        <ScrollArea className="h-full w-full">
+          <div className="prose max-w-none px-6 py-4 pb-32">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {cleanTranscriptText(activeTask?.output || "")}
+            </ReactMarkdown>
+          </div>
+        </ScrollArea>
+
+        {/* Integrated Footer Subtitle Strip */}
+        <div className="absolute inset-x-0 bottom-0 z-20 flex h-16 items-center border-t border-white/5 bg-black/80 px-6 backdrop-blur-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.6)]">
+          <div className="flex flex-1 items-center gap-4 overflow-hidden">
+            <div className="relative flex h-6 w-6 flex-shrink-0 items-center justify-center">
+              <span className="absolute inset-0 animate-ping rounded-full bg-emerald-500/10"></span>
+              <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <TranscriptOverlay 
+                messages={transcript} 
+                visible={showTranscript && isConnected && status !== "idle"} 
+                pinned={true}
+              />
+            </div>
+          </div>
+          <div className="ml-4 flex-shrink-0 scale-75 transform origin-right">
+            <SmartOrb 
+              volume={volume} 
+              features={audioFeatures} 
+              status={status} 
+              compact={true}
+            />
+          </div>
+        </div>
+      </div>
+      <canvas ref={canvasRef} className="hidden" />
+    </div>
+  ) : null;
+
+  const mainDisplayContent = (isVideoOn || isSharing) ? (
+    <video
+      ref={videoRef}
+      autoPlay
+      playsInline
+      muted
+      className="h-full w-full object-cover"
+    />
+  ) : readingModeContent;
+
   return (
     <main className="relative h-screen w-full overflow-hidden bg-black text-white selection:bg-primary/30">
       {/* Background Stage */}
       <div className="absolute inset-0 z-0">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_43%,rgba(72,255,222,0.08),transparent_24%),radial-gradient(circle_at_56%_39%,rgba(255,93,184,0.05),transparent_22%)]" />
         
-        <div className="flex h-full w-full items-center justify-center p-12">
-          {(isVideoOn || isSharing || (isTaskPinned && activeTask?.output)) ? (
-            <div className="glass-panel relative flex aspect-video w-full max-w-5xl items-center justify-center overflow-hidden rounded-3xl bg-black/20 backdrop-blur-3xl border border-white/10">
-              {(isVideoOn || isSharing) ? (
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <div className="flex h-full w-full flex-col p-10">
-                  <div className="mb-6 flex items-center justify-between border-b border-white/10 pb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/20">
-                        <ListChecks className="h-4 w-4 text-primary" />
-                      </div>
-                      <h3 className="text-xl font-bold text-white/90">{activeTask?.title}</h3>
-                    </div>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      onClick={() => setIsTaskPinned(false)}
-                      className="h-8 rounded-full bg-white/5 text-xs text-white/40 hover:bg-white/10 hover:text-white"
-                    >
-                      <PinOff className="mr-2 h-3.5 w-3.5" />
-                      退出阅读模式
-                    </Button>
-                  </div>
-                  <ScrollArea className="flex-1 pr-4">
-                    <div className="prose prose-invert prose-sm max-w-none 
-                      prose-headings:text-white prose-p:text-white/80 prose-strong:text-white
-                      prose-table:border prose-table:border-white/10 prose-th:bg-white/5 prose-th:p-3 prose-td:p-3 prose-td:border-t prose-td:border-white/10"
-                    >
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{cleanTranscriptText(activeTask?.output || "")}</ReactMarkdown>
-                    </div>
-                  </ScrollArea>
-                </div>
-              )}
-              <div className="absolute bottom-6 right-6">
-                <SmartOrb 
-                  volume={volume} 
-                  features={audioFeatures} 
-                  status={status} 
-                  compact={true}
-                />
-              </div>
-              <canvas ref={canvasRef} className="hidden" />
+        <div className="flex h-full w-full items-center justify-center px-4 pb-20 pt-24">
+          {mainDisplayContent ? (
+            <div className="glass-panel relative flex h-full max-h-[80vh] w-[92%] max-w-5xl items-center justify-center overflow-hidden rounded-3xl border border-white/10 bg-black/20 shadow-2xl backdrop-blur-3xl transition-all duration-700">
+              {mainDisplayContent}
             </div>
           ) : (
             <div className="relative flex flex-col items-center">
-              <SmartOrb 
-                volume={volume} 
-                features={audioFeatures} 
-                status={status} 
-                compact={false} 
+              <SmartOrb
+                volume={volume}
+                features={audioFeatures}
+                status={status}
+                compact={false}
               />
             </div>
           )}
@@ -1222,7 +1260,7 @@ export default function JilingPage() {
       {/* Transcript Overlay */}
       <TranscriptOverlay 
         messages={transcript} 
-        visible={showTranscript && isConnected && status !== "idle"} 
+        visible={showTranscript && isConnected && status !== "idle" && !isTaskPinned} 
       />
 
       <header className="relative z-20 flex items-center justify-between px-8 py-6">
@@ -1244,18 +1282,39 @@ export default function JilingPage() {
             </label>
             
             {providers.length > 0 && (
-              <label className="relative">
-                <Bot className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/40" />
-                <select
-                  disabled={isBusy || isConnected}
-                  value={selectedProviderId}
-                  onChange={(e) => setSelectedProviderId(e.target.value)}
-                  className="h-9 w-32 appearance-none rounded-full border border-white/10 bg-white/5 pl-9 pr-8 text-xs text-white/60 outline-none backdrop-blur-xl transition hover:bg-white/10 focus:border-primary/50 disabled:opacity-50"
-                >
-                  {providers.map(p => <option key={p.id} value={p.id} className="bg-[#1a1a1a]">{providerLabel(p.id, p.name)}</option>)}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-white/30" />
-              </label>
+              <div className="flex items-center gap-1.5">
+                <label className="relative">
+                  <Bot className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/40" />
+                  <select
+                    disabled={isBusy || isConnected}
+                    value={selectedProviderId}
+                    onChange={(e) => setSelectedProviderId(e.target.value)}
+                    className="h-9 w-32 appearance-none rounded-full border border-white/10 bg-white/5 pl-9 pr-8 text-xs text-white/60 outline-none backdrop-blur-xl transition hover:bg-white/10 focus:border-primary/50 disabled:opacity-50"
+                  >
+                    {providers.map(p => <option key={p.id} value={p.id} className="bg-[#1a1a1a]">{providerLabel(p.id, p.name)}</option>)}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-white/30" />
+                </label>
+
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger 
+                      render={
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          disabled={isBusy || isConnected}
+                          onClick={clearSessionHandle}
+                          className="h-9 w-9 rounded-full bg-white/5 text-white/30 hover:bg-destructive/10 hover:text-destructive transition-colors"
+                        >
+                          <Eraser className="h-3.5 w-3.5" />
+                        </Button>
+                      }
+                    />
+                    <TooltipContent><p>擦除记忆 (Handle)</p></TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
             )}
 
             {isConnected && (
@@ -1326,7 +1385,7 @@ export default function JilingPage() {
       {/* Settings Dialog */}
       <AnimatePresence>
         {showSettings && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md">
+          <div className="fixed inset-0 z-100 flex items-center justify-center bg-black/60 backdrop-blur-md">
             <motion.div 
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
