@@ -1265,7 +1265,7 @@ export default function JilingPage() {
               repeat: (status === "thinking" || status === "listening") ? Infinity : 0,
               repeatType: "reverse"
             }}
-            className="pointer-events-none fixed inset-0 z-[400] border border-white/5"
+            className="pointer-events-none fixed inset-0 z-400 border border-white/5"
           />
         )}
       </AnimatePresence>
