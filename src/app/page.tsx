@@ -474,35 +474,42 @@ export default function JilingPage() {
 
   // Automate frame capture when connected and video/sharing is active
   useEffect(() => {
-    let timer: number | null = null;
+    let timer: any = null;
 
     if (isConnected && (isVideoOn || isSharing)) {
-      timer = window.setInterval(() => {
-        if (!canvasRef.current || !videoRef.current || !clientRef.current) return;
-        
+      timer = setInterval(() => {
         const canvas = canvasRef.current;
         const video = videoRef.current;
-        const ctx = canvas.getContext("2d");
+        const client = clientRef.current;
+
+        if (!canvas || !video || !client) return;
+        
+        // Ensure video is actually playing and has dimensions
+        if (video.paused || video.ended || video.readyState < 2) return;
+
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
         if (!ctx) return;
 
-        // Sync resolution to canvas
-        if (canvas.width !== 640) {
+        // Force standard vision resolution (Gemini likes 640x480 or similar)
+        if (canvas.width !== 640 || canvas.height !== 480) {
           canvas.width = 640;
           canvas.height = 480;
         }
         
         try {
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const base64 = canvas.toDataURL("image/jpeg", 0.7).split(",")[1];
-          clientRef.current.sendVideo(base64);
+          const base64 = canvas.toDataURL("image/jpeg", 0.6).split(",")[1];
+          if (base64 && base64.length > 100) {
+            client.sendVideo(base64);
+          }
         } catch (e) {
-          // Log occasionally if needed
+          console.error("Vision capture error:", e);
         }
-      }, 1000); // 1 FPS
+      }, 1000); // 1 FPS is usually enough for live vision
     }
 
     return () => {
-      if (timer) window.clearInterval(timer);
+      if (timer) clearInterval(timer);
     };
   }, [isConnected, isVideoOn, isSharing]);
 
@@ -1218,7 +1225,6 @@ export default function JilingPage() {
         </ScrollArea>
 
       </div>
-      <canvas ref={canvasRef} className="hidden" />
     </div>
   ) : null;
 
@@ -1232,7 +1238,7 @@ export default function JilingPage() {
           ref={(node) => {
             if (node) {
               videoRef.current = node;
-              if (videoStreamRef.current) {
+              if (videoStreamRef.current && node.srcObject !== videoStreamRef.current) {
                 node.srcObject = videoStreamRef.current;
               }
             }
@@ -1566,6 +1572,9 @@ export default function JilingPage() {
           />
         </div>
       )}
+
+      {/* Hidden canvas for vision sampling - ALWAYS MOUNTED */}
+      <canvas ref={canvasRef} className="hidden" aria-hidden="true" />
     </main>
   );
 }
