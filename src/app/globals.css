@@ -143,4 +143,20 @@
       radial-gradient(circle at 42% 44%, rgba(255, 110, 199, 0.1), transparent 23%),
       linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012));
   }
+
+  .glass-panel {
+    @apply backdrop-blur-xl bg-white/5 border border-white/10 shadow-[0_8px_32px_0_rgba(0,0,0,0.36)];
+  }
+
+  .glass-card {
+    @apply backdrop-blur-md bg-white/[0.02] border border-white/5 rounded-2xl;
+  }
+
+  .text-shadow-glow {
+    text-shadow: 0 0 8px rgba(255,255,255,0.2);
+  }
+
+  .transcript-fade-mask {
+    /* Mask handled via inline style for dynamic control */
+  }
 }

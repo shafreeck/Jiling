@@ -233,6 +233,20 @@ ${this.profile.userContext ? `<USER>\n${this.profile.userContext}\n</USER>\n` : 
     });
   }
 
+  sendVideo(base64Image: string) {
+    if (!this.session) return;
+    // Note: Multimodal Live API expects frames as image/jpeg or image/png media chunks
+    // The SDK might call it 'mediaChunks' or 'video' depending on version, 
+    // Note: Multimodal Live API expects frames as image/jpeg or image/png media chunks
+    // In the JS SDK, this is passed via the 'video' property.
+    this.session.sendRealtimeInput({
+      video: {
+        data: base64Image,
+        mimeType: "image/jpeg",
+      },
+    });
+  }
+
   sendToolResponse(functionResponses: FunctionResponse[]) {
     this.session?.sendToolResponse({ functionResponses });
   }

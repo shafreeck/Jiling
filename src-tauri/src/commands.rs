@@ -95,9 +95,9 @@ pub async fn get_api_key_status(app: AppHandle) -> Result<ApiKeyStatus, String> 
 
 #[tauri::command]
 pub async fn capture_screen() -> Result<String, String> {
-    let path = "/tmp/jiling_screen.png";
+    let path = "/tmp/jiling_screen.jpg";
     let output = Command::new("screencapture")
-        .args(["-x", path])
+        .args(["-x", "-t", "jpg", path])
         .output()
         .map_err(|e| format!("Failed to run screencapture: {}", e))?;
 

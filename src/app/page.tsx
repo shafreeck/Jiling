@@ -18,15 +18,24 @@ import {
   RotateCw,
   Sparkles,
   Terminal,
+  VideoOff,
   X,
+  PinOff,
 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { SmartOrb } from "@/components/SmartOrb";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { GeminiLiveClient, type LiveMessage } from "@/lib/gemini-live";
 import { runGeminiLiveSelfTest } from "@/lib/gemini-live-self-test";
 import { AcpProviderAdapter } from "@/lib/providers/acp-provider";
 import type { AgentProviderAdapter, AgentRuntimeProfile, JilingTaskOutput } from "@/lib/agent-provider";
+import { TranscriptOverlay, type TranscriptMessage } from "@/components/TranscriptOverlay";
+import { ControlBar } from "@/components/ControlBar";
+import { TaskSidePanel } from "@/components/TaskSidePanel";
+import { TaskOutputOverlay } from "@/components/TaskOutputOverlay";
 
 type VoiceStatus = "idle" | "listening" | "thinking" | "speaking";
 type ToolCall = NonNullable<LiveMessage["toolCall"]>;
@@ -357,6 +366,28 @@ export default function JilingPage() {
   const [providers, setProviders] = useState<ProviderOption[]>([]);
   const [selectedProviderId, setSelectedProviderId] = useState<string>("openclaw");
   const [selectedVoice, setSelectedVoice] = useState<string>("none");
+
+  const isHydratedRef = useRef(false);
+
+  // Load persistence on mount
+  useEffect(() => {
+    const savedVoice = localStorage.getItem("jiling_voice");
+    const savedProvider = localStorage.getItem("jiling_provider");
+    if (savedVoice) setSelectedVoice(savedVoice);
+    if (savedProvider) setSelectedProviderId(savedProvider);
+    isHydratedRef.current = true;
+  }, []);
+
+  // Save changes after hydration
+  useEffect(() => {
+    if (!isHydratedRef.current) return;
+    localStorage.setItem("jiling_voice", selectedVoice);
+  }, [selectedVoice]);
+
+  useEffect(() => {
+    if (!isHydratedRef.current) return;
+    localStorage.setItem("jiling_provider", selectedProviderId);
+  }, [selectedProviderId]);
   const [focusMode, setFocusMode] = useState(true);
   const [showLogs, setShowLogs] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -364,14 +395,29 @@ export default function JilingPage() {
   const [apiKeyConfigured, setApiKeyConfigured] = useState<boolean | null>(null);
   const [apiKeySource, setApiKeySource] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  
+  const activeTask = useMemo(() => {
+    return agentTasks.find((task) => task.runId === selectedTaskId) || agentTasks[0];
+  }, [agentTasks, selectedTaskId]);
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+  
+  // New UI states
+  const [transcript, setTranscript] = useState<TranscriptMessage[]>([]);
+  const [showTranscript, setShowTranscript] = useState(true);
+  const [isSidePanelOpen, setIsSidePanelOpen] = useState(false);
+  const [isTaskPinned, setIsTaskPinned] = useState(false);
+  const [isVideoOn, setIsVideoOn] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
 
   const selectedVoiceRef = useRef(selectedVoice);
   const selectedProviderIdRef = useRef(selectedProviderId);
+  const isMutedRef = useRef(isMuted);
   useEffect(() => { selectedVoiceRef.current = selectedVoice; }, [selectedVoice]);
   useEffect(() => { selectedProviderIdRef.current = selectedProviderId; }, [selectedProviderId]);
+  useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
 
   const statusRef = useRef<VoiceStatus>("idle");
   const reconnectWantedRef = useRef(false);
@@ -389,6 +435,111 @@ export default function JilingPage() {
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const videoStreamRef = useRef<MediaStream | null>(null);
+  const captureTimerRef = useRef<number | null>(null);
+
+  const stopVideoStream = () => {
+    if (captureTimerRef.current) {
+      window.clearInterval(captureTimerRef.current);
+      captureTimerRef.current = null;
+    }
+    if (videoStreamRef.current) {
+      videoStreamRef.current.getTracks().forEach(track => track.stop());
+      videoStreamRef.current = null;
+    }
+  };
+
+  // Sync video stream to element when it appears in DOM
+  useEffect(() => {
+    if (videoRef.current && videoStreamRef.current) {
+      videoRef.current.srcObject = videoStreamRef.current;
+    }
+  }, [isVideoOn, isSharing]);
+
+  // Automate frame capture when connected and video/sharing is active
+  useEffect(() => {
+    let timer: number | null = null;
+
+    if (isConnected && (isVideoOn || isSharing)) {
+      timer = window.setInterval(() => {
+        if (!canvasRef.current || !videoRef.current || !clientRef.current) return;
+        
+        const canvas = canvasRef.current;
+        const video = videoRef.current;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+
+        // Sync resolution to canvas
+        if (canvas.width !== 640) {
+          canvas.width = 640;
+          canvas.height = 480;
+        }
+        
+        try {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const base64 = canvas.toDataURL("image/jpeg", 0.7).split(",")[1];
+          clientRef.current.sendVideo(base64);
+        } catch (e) {
+          // Log occasionally if needed
+        }
+      }, 1000); // 1 FPS
+    }
+
+    return () => {
+      if (timer) window.clearInterval(timer);
+    };
+  }, [isConnected, isVideoOn, isSharing]);
+
+  const handleToggleVideo = async () => {
+    if (isVideoOn) {
+      stopVideoStream();
+      setIsVideoOn(false);
+    } else {
+      try {
+        if (isSharing) stopVideoStream(); // Stop sharing if active
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { width: 1280, height: 720 }, 
+          audio: false 
+        });
+        videoStreamRef.current = stream;
+        videoStreamRef.current = stream;
+        setIsVideoOn(true);
+        setIsSharing(false);
+      } catch (error) {
+        addLog(`[视频] 无法开启摄像头: ${errorMessage(error)}`);
+      }
+    }
+  };
+
+  const handleToggleShare = async () => {
+    if (isSharing) {
+      stopVideoStream();
+      setIsSharing(false);
+    } else {
+      try {
+        if (isVideoOn) stopVideoStream(); // Stop camera if active
+        const stream = await navigator.mediaDevices.getDisplayMedia({ 
+          video: true, 
+          audio: false 
+        });
+        videoStreamRef.current = stream;
+        videoStreamRef.current = stream;
+        
+        // Handle stream stop via browser UI
+        stream.getVideoTracks()[0].onended = () => {
+          stopVideoStream();
+          setIsSharing(false);
+        };
+
+        setIsSharing(true);
+        setIsVideoOn(false);
+      } catch (error) {
+        addLog(`[屏幕] 无法开启共享: ${errorMessage(error)}`);
+      }
+    }
+  };
 
   const setStatus = (next: VoiceStatus) => {
     statusRef.current = next;
@@ -554,7 +705,7 @@ export default function JilingPage() {
       const input = event.inputBuffer.getChannelData(0);
       updateAudioFeatures(input, event.inputBuffer.sampleRate);
 
-      if (statusRef.current === "idle") return;
+      if (statusRef.current === "idle" || isMutedRef.current) return;
 
       const pcm16 = resampleTo16k(input, event.inputBuffer.sampleRate);
       clientRef.current?.sendAudio(pcm16ToBase64(pcm16));
@@ -603,7 +754,11 @@ export default function JilingPage() {
         
         if (detected.length > 0) {
           setProviders(detected);
-          setSelectedProviderId(detected[0].id);
+          // Only set default if no saved provider exists in localStorage
+          const savedProvider = localStorage.getItem("jiling_provider");
+          if (!savedProvider || !detected.find(p => p.id === savedProvider)) {
+            setSelectedProviderId(detected[0].id);
+          }
         }
       } catch (e) {
         console.error("Provider detection failed", e);
@@ -741,6 +896,15 @@ export default function JilingPage() {
     }
   };
 
+  const cleanTranscriptText = (text: string) => {
+    if (!text) return text;
+    // Remove spaces between Chinese characters
+    let cleaned = text.replace(/(?<=[\u4e00-\u9fa5])\s+(?=[\u4e00-\u9fa5])/g, "");
+    // Remove spaces between Chinese character and punctuation
+    cleaned = cleaned.replace(/(?<=[\u4e00-\u9fa5])\s+(?=[，。？！；：、“”『』「」])|(?<=[，。？！；：、“”『』「」])\s+(?=[\u4e00-\u9fa5])/g, "");
+    return cleaned;
+  };
+
   const handleLiveMessage = (message: LiveMessage) => {
     if (message.goAway) {
       scheduleServerReconnect(message.goAway.timeLeft);
@@ -763,11 +927,48 @@ export default function JilingPage() {
       }
 
       if (content.inputTranscription?.text) {
-        addLog(`用户: ${content.inputTranscription.text}`);
+        const text = content.inputTranscription.text;
+        addLog(`用户: ${text}`);
+        setTranscript(prev => {
+          const last = prev[prev.length - 1];
+          // If the last message was also user and was added very recently, append to it
+          // Note: Gemini Live inputTranscription is often partial but not necessarily cumulative deltas
+          // If it's a new thought, we might want a new bubble. 
+          // But for "one sentence", we append.
+          if (last && last.role === "user" && Date.now() - last.timestamp < 3000) {
+            const updated = [...prev];
+            const merged = cleanTranscriptText(last.text + text);
+            updated[updated.length - 1] = { ...last, text: merged, timestamp: Date.now() };
+            return updated;
+          }
+          return [...prev, {
+            id: Math.random().toString(36).slice(2),
+            role: "user",
+            text: cleanTranscriptText(text),
+            timestamp: Date.now()
+          }];
+        });
       }
 
       if (content.outputTranscription?.text) {
-        addLog(`${profileRef.current?.displayName || "代理"}: ${content.outputTranscription.text}`);
+        const text = content.outputTranscription.text;
+        addLog(`AI: ${text}`);
+        setTranscript(prev => {
+          const last = prev[prev.length - 1];
+          // AI output transcription usually comes in chunks as it speaks
+          if (last && last.role === "ai" && Date.now() - last.timestamp < 5000) {
+            const updated = [...prev];
+            const merged = cleanTranscriptText(last.text + text);
+            updated[updated.length - 1] = { ...last, text: merged, timestamp: Date.now() };
+            return updated;
+          }
+          return [...prev, {
+            id: Math.random().toString(36).slice(2),
+            role: "ai",
+            text: text,
+            timestamp: Date.now()
+          }];
+        });
       }
 
       if (content.turnComplete && !streamerRef.current?.active && statusRef.current === "speaking") {
@@ -877,6 +1078,13 @@ export default function JilingPage() {
               message: "当前没有可用的本地代理适配器，无法确认任务状态。不能声称任务完成。",
             };
           }
+        } else if (call.name === "capture_screen") {
+          const b64 = await invoke<string>("capture_screen");
+          clientRef.current?.sendVideo(b64);
+          result = {
+            success: true,
+            message: "屏幕截图已捕获并发送到你的视觉输入流。你现在应该能看到用户的屏幕了。",
+          };
         } else if (call.name === "abort_agent_task" && adapterRef.current) {
           const runId = String(callArgs.run_id || callArgs.runId || selectedTaskId || "");
           if (!runId) {
@@ -943,284 +1151,256 @@ export default function JilingPage() {
   const currentProviderName = providerLabel(selectedProviderId, providers.find((provider) => provider.id === selectedProviderId)?.name);
 
   return (
-    <main className="h-screen w-full overflow-hidden bg-[#050506] text-white">
-      <div className="relative flex h-full flex-col overflow-hidden px-7 py-6">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_43%,rgba(72,255,222,0.11),transparent_24%),radial-gradient(circle_at_56%_39%,rgba(255,93,184,0.08),transparent_22%),linear-gradient(180deg,#09090b_0%,#050506_68%,#030304_100%)]" />
-
-        <header className="relative z-10 flex shrink-0 items-start justify-between gap-5">
-          <div className="min-w-0">
-            <div className="brand-word text-[28px] leading-none text-white/92">机灵</div>
-            <div className="mt-3 flex items-center gap-2 text-[13px] text-white/48">
-              <span className={`h-2 w-2 rounded-full ${isConnected ? "bg-emerald-200 shadow-[0_0_18px_rgba(167,243,208,0.92)]" : "bg-white/20"}`} />
-              <span>{statusText}</span>
-              {runningTasks.length > 0 && (
-                <span className="rounded-full bg-white/6 px-2 py-0.5 text-white/54">
-                  {runningTasks.length} 个任务
-                </span>
+    <main className="relative h-screen w-full overflow-hidden bg-black text-white selection:bg-primary/30">
+      {/* Background Stage */}
+      <div className="absolute inset-0 z-0">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_43%,rgba(72,255,222,0.08),transparent_24%),radial-gradient(circle_at_56%_39%,rgba(255,93,184,0.05),transparent_22%)]" />
+        
+        <div className="flex h-full w-full items-center justify-center p-12">
+          {(isVideoOn || isSharing || (isTaskPinned && activeTask?.output)) ? (
+            <div className="glass-panel relative flex aspect-video w-full max-w-5xl items-center justify-center overflow-hidden rounded-3xl bg-black/20 backdrop-blur-3xl border border-white/10">
+              {(isVideoOn || isSharing) ? (
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="flex h-full w-full flex-col p-10">
+                  <div className="mb-6 flex items-center justify-between border-b border-white/10 pb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/20">
+                        <ListChecks className="h-4 w-4 text-primary" />
+                      </div>
+                      <h3 className="text-xl font-bold text-white/90">{activeTask?.title}</h3>
+                    </div>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => setIsTaskPinned(false)}
+                      className="h-8 rounded-full bg-white/5 text-xs text-white/40 hover:bg-white/10 hover:text-white"
+                    >
+                      <PinOff className="mr-2 h-3.5 w-3.5" />
+                      退出阅读模式
+                    </Button>
+                  </div>
+                  <ScrollArea className="flex-1 pr-4">
+                    <div className="prose prose-invert prose-sm max-w-none 
+                      prose-headings:text-white prose-p:text-white/80 prose-strong:text-white
+                      prose-table:border prose-table:border-white/10 prose-th:bg-white/5 prose-th:p-3 prose-td:p-3 prose-td:border-t prose-td:border-white/10"
+                    >
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{cleanTranscriptText(activeTask?.output || "")}</ReactMarkdown>
+                    </div>
+                  </ScrollArea>
+                </div>
               )}
+              <div className="absolute bottom-6 right-6">
+                <SmartOrb 
+                  volume={volume} 
+                  features={audioFeatures} 
+                  status={status} 
+                  compact={true}
+                />
+              </div>
+              <canvas ref={canvasRef} className="hidden" />
             </div>
-          </div>
+          ) : (
+            <div className="relative flex flex-col items-center">
+              <SmartOrb 
+                volume={volume} 
+                features={audioFeatures} 
+                status={status} 
+                compact={false} 
+              />
+            </div>
+          )}
+        </div>
+      </div>
 
-          <div className="flex min-w-0 items-center gap-2">
-            <label className="relative hidden md:block">
-              <Sparkles className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/42" />
+      {/* Transcript Overlay */}
+      <TranscriptOverlay 
+        messages={transcript} 
+        visible={showTranscript && isConnected && status !== "idle"} 
+      />
+
+      <header className="relative z-20 flex items-center justify-between px-8 py-6">
+        <div className="flex items-center gap-6">
+          <div className="brand-word text-2xl tracking-widest text-white/90">机灵</div>
+          <div className="h-4 w-px bg-white/10" />
+          <div className="flex items-center gap-2">
+            <label className="relative">
+              <Sparkles className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/40" />
               <select
                 disabled={isBusy || isConnected}
                 value={selectedVoice}
-                onChange={(event) => setSelectedVoice(event.target.value)}
-                className="h-10 w-40 appearance-none rounded-full border border-white/8 bg-white/4.5 pl-9 pr-9 text-sm text-white/64 outline-none backdrop-blur-xl transition focus:border-white/20 disabled:opacity-45"
+                onChange={(e) => setSelectedVoice(e.target.value)}
+                className="h-9 w-36 appearance-none rounded-full border border-white/10 bg-white/5 pl-9 pr-8 text-xs text-white/60 outline-none backdrop-blur-xl transition hover:bg-white/10 focus:border-primary/50 disabled:opacity-50"
               >
-                {VOICES.map((voice) => (
-                  <option key={voice.id} value={voice.id}>{voice.name}</option>
-                ))}
+                {VOICES.map(v => <option key={v.id} value={v.id} className="bg-[#1a1a1a] font-sans">{v.name}</option>)}
               </select>
-              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-white/30" />
             </label>
-
+            
             {providers.length > 0 && (
-              <label className="relative hidden md:block">
-                <Bot className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/42" />
+              <label className="relative">
+                <Bot className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/40" />
                 <select
                   disabled={isBusy || isConnected}
                   value={selectedProviderId}
-                  onChange={(event) => setSelectedProviderId(event.target.value)}
-                  className="h-10 w-36 appearance-none rounded-full border border-white/8 bg-white/4.5 pl-9 pr-9 text-sm text-white/64 outline-none backdrop-blur-xl transition focus:border-white/20 disabled:opacity-45"
+                  onChange={(e) => setSelectedProviderId(e.target.value)}
+                  className="h-9 w-32 appearance-none rounded-full border border-white/10 bg-white/5 pl-9 pr-8 text-xs text-white/60 outline-none backdrop-blur-xl transition hover:bg-white/10 focus:border-primary/50 disabled:opacity-50"
                 >
-                  {providers.map((provider) => (
-                    <option key={provider.id} value={provider.id}>{providerLabel(provider.id, provider.name)}</option>
-                  ))}
+                  {providers.map(p => <option key={p.id} value={p.id} className="bg-[#1a1a1a]">{providerLabel(p.id, p.name)}</option>)}
                 </select>
-                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-white/30" />
               </label>
             )}
 
-            <Button
-              type="button"
-              title={apiKeyConfigured ? `API Key：${apiKeySource || "已配置"}` : "设置 API Key"}
-              onClick={() => {
-                setSettingsError(null);
-                setShowSettings(true);
-              }}
-              className={`h-10 w-10 rounded-full border p-0 ${
-                apiKeyConfigured
-                  ? "border-white/8 bg-white/4.5 text-white/62 hover:bg-white/10"
-                  : "border-amber-200/24 bg-amber-200/10 text-amber-100 hover:bg-amber-200/16"
-              }`}
-            >
-              <KeyRound className="h-4 w-4" />
-            </Button>
-
-            <Button
-              type="button"
-              title={focusMode ? "展开工作层" : "收起工作层"}
-              onClick={() => setFocusMode((value) => !value)}
-              className="h-10 w-10 rounded-full border border-white/8 bg-white/4.5 p-0 text-white/62 hover:bg-white/10"
-            >
-              {focusMode ? <PanelRight className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
-            </Button>
+            {isConnected && (
+              <div className="ml-2 flex items-center gap-2 rounded-full bg-emerald-500/5 px-2.5 py-1 text-[10px] font-medium text-emerald-400/80 border border-emerald-500/10 backdrop-blur-md">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400/50 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                </span>
+                LIVE • {statusText}
+              </div>
+            )}
           </div>
-        </header>
+        </div>
 
-        <section className="relative z-10 grid min-h-0 flex-1 grid-cols-1 gap-5 pt-4 lg:grid-cols-[1fr_auto]">
-          <div className="voice-surface relative flex min-h-0 flex-col items-center justify-center overflow-hidden">
-            <div className="absolute left-1/2 top-[14%] flex -translate-x-1/2 items-center gap-2 rounded-full bg-white/4.5 px-4 py-2 text-xs text-white/48 backdrop-blur-2xl">
-              <Radio className="h-3.5 w-3.5 text-cyan-100/64" />
-              <span>{currentProviderName}</span>
-            </div>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsSidePanelOpen(true)}
+            className="relative h-10 w-10 rounded-full border border-white/10 bg-white/5 backdrop-blur-md text-white/60 hover:bg-white/10 hover:text-white"
+          >
+            <ListChecks className="h-5 w-5" />
+            {runningTasks.length > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white shadow-lg">
+                {runningTasks.length}
+              </span>
+            )}
+          </Button>
 
-            <SmartOrb volume={volume} features={audioFeatures} status={status} compact />
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setShowSettings(true)}
+            className="h-10 w-10 rounded-full border border-white/10 bg-white/5 backdrop-blur-md text-white/60 hover:bg-white/10 hover:text-white"
+          >
+            <KeyRound className="h-5 w-5" />
+          </Button>
+        </div>
+      </header>
 
-            <div className="absolute bottom-[8%] left-1/2 flex -translate-x-1/2 items-center gap-4 rounded-full border border-white/8 bg-black/34 p-2 shadow-[0_22px_80px_rgba(0,0,0,0.48)] backdrop-blur-2xl">
-              <Button
-                onClick={clearContext}
-                title="清除会话"
-                className="h-12 w-12 rounded-full border border-white/8 bg-white/4.5 p-0 text-white/48 hover:bg-white/10"
-              >
-                <Eraser className="h-5 w-5" />
-              </Button>
+      {/* Main Control Bar */}
+      <ControlBar 
+        isMuted={isMuted}
+        onToggleMute={() => setIsMuted(!isMuted)}
+        isVideoOn={isVideoOn}
+        onToggleVideo={handleToggleVideo}
+        isSharing={isSharing}
+        onToggleShare={handleToggleShare}
+        showTranscript={showTranscript}
+        onToggleTranscript={() => setShowTranscript(!showTranscript)}
+        isConnected={isConnected}
+        onConnect={startConversation}
+        onDisconnect={stopConversation}
+        isBusy={isBusy}
+      />
 
-              <Button
-                disabled={isBusy}
-                onClick={isConnected ? stopConversation : startConversation}
-                title={isConnected ? "停止语音" : "开始语音"}
-                className={`h-[68px] w-[68px] rounded-full p-0 ${
-                  isConnected
-                    ? "border border-rose-200/24 bg-rose-300/12 text-rose-100 shadow-[0_0_44px_rgba(244,114,182,0.22)] hover:bg-rose-300/18"
-                    : "bg-white text-black shadow-[0_0_54px_rgba(255,255,255,0.22)] hover:bg-cyan-100"
-                }`}
-              >
-                {isConnected ? <CircleStop className="h-7 w-7" /> : <Mic className="h-7 w-7" />}
-              </Button>
+      {/* Task Side Panel */}
+      <TaskSidePanel 
+        isOpen={isSidePanelOpen}
+        onClose={() => setIsSidePanelOpen(false)}
+        tasks={agentTasks}
+        selectedTaskId={selectedTaskId}
+        onSelectTask={setSelectedTaskId}
+        isPinned={isTaskPinned}
+        onTogglePin={() => setIsTaskPinned(!isTaskPinned)}
+      />
 
-              <Button
-                disabled={isBusy}
-                onClick={isConnected ? forceReconnect : runSelfTest}
-                title={isConnected ? "重新连接" : "恢复自检"}
-                className="h-12 w-12 rounded-full border border-white/8 bg-white/4.5 p-0 text-white/48 hover:bg-white/10"
-              >
-                {isConnected ? <RotateCw className="h-5 w-5" /> : <Activity className="h-5 w-5" />}
-              </Button>
-            </div>
-          </div>
-
-          {!focusMode && (
-            <aside className="flex h-full w-[340px] min-h-0 flex-col gap-3 rounded-md border border-white/8 bg-white/[0.035] p-3 backdrop-blur-2xl">
-              <div className="flex items-center justify-between px-1 py-1 text-sm text-white/76">
-                <div className="flex items-center gap-2">
-                  <ListChecks className="h-4 w-4 text-emerald-100/66" />
-                  <span>任务</span>
-                </div>
-                <span className="text-xs text-white/34">共 {agentTasks.length} 个</span>
-              </div>
-
-              <div className="min-h-[112px] shrink-0 space-y-2 overflow-y-auto">
-                {agentTasks.length === 0 ? (
-                  <div className="flex h-28 items-center justify-center text-sm text-white/34">暂无后台任务</div>
-                ) : (
-                  agentTasks.map((task) => (
-                    <button
-                      key={task.runId}
-                      type="button"
-                      onClick={() => setSelectedTaskId(task.runId)}
-                      className={`w-full rounded-md px-3 py-3 text-left transition ${
-                        selectedTask?.runId === task.runId
-                          ? "bg-white/7.5"
-                          : "bg-transparent hover:bg-white/4.5"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className={`h-2 w-2 rounded-full ${
-                          task.phase === "completed" ? "bg-emerald-200" :
-                          task.phase === "failed" ? "bg-rose-200" :
-                          task.phase === "cancelled" ? "bg-white/28" :
-                          "bg-amber-200"
-                        }`} />
-                        <span className="min-w-0 flex-1 truncate text-sm text-white/78">{task.title}</span>
-                        <span className="text-xs text-white/38">{phaseLabel(task.phase)}</span>
-                      </div>
-                      <div className="mt-2 truncate pl-4 text-xs text-white/36">
-                        {task.progress.at(-1) || task.output || task.runId}
-                      </div>
-                    </button>
-                  ))
-                )}
-              </div>
-
-              <div className="flex min-h-0 flex-1 flex-col rounded-md bg-black/22">
-                <div className="flex items-center justify-between px-4 py-3 text-sm text-white/76">
-                  <div className="flex items-center gap-2">
-                    <Bot className="h-4 w-4 text-cyan-100/66" />
-                    <span>完整输出</span>
-                  </div>
-                  <span className="max-w-[130px] truncate text-xs text-white/30">{selectedTask?.runId || "等待任务"}</span>
-                </div>
-                <ScrollArea className="min-h-0 flex-1 px-4 pb-4">
-                  <pre className="whitespace-pre-wrap wrap-break-word font-sans text-[13px] leading-6 text-white/62">{latestOutput}</pre>
-                </ScrollArea>
-              </div>
-
-              <div className="shrink-0">
-                <Button
-                  type="button"
-                  title={showLogs ? "隐藏调试记录" : "显示调试记录"}
-                  onClick={() => setShowLogs((value) => !value)}
-                  className="h-8 w-full rounded-md bg-white/[0.035] text-xs text-white/42 hover:bg-white/[0.07]"
-                >
-                  <Terminal className="mr-2 h-3.5 w-3.5" />
-                  调试记录
-                </Button>
-
-                {showLogs && (
-                  <ScrollArea className="mt-2 h-32 rounded-md bg-black/24 px-3 py-2 font-mono text-[10px] leading-5 text-white/34">
-                    {logs.map((log, index) => (
-                      <div key={`${index}-${log}`} className="truncate">
-                        <span className="mr-1 text-cyan-200/42">›</span>
-                        {log}
-                      </div>
-                    ))}
-                    <div ref={logEndRef} />
-                  </ScrollArea>
-                )}
-              </div>
-            </aside>
-          )}
-        </section>
-
+      {/* Settings Dialog */}
+      <AnimatePresence>
         {showSettings && (
-          <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/54 px-6 backdrop-blur-xl">
-            <div className="w-full max-w-md rounded-lg border border-white/10 bg-[#111114]/92 p-5 shadow-[0_28px_120px_rgba(0,0,0,0.62)]">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="flex items-center gap-2 text-base text-white/88">
-                    <KeyRound className="h-4 w-4 text-cyan-100/70" />
-                    <span>Gemini API Key</span>
-                  </div>
-                  <p className="mt-2 text-sm leading-6 text-white/45">
-                    保存后会优先使用应用设置；环境变量仍可作为开发兜底。
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  title="关闭"
-                  disabled={isSavingSettings}
-                  onClick={() => setShowSettings(false)}
-                  className="h-8 w-8 rounded-full bg-white/4 p-0 text-white/48 hover:bg-white/10"
-                >
-                  <X className="h-4 w-4" />
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="glass-panel w-full max-w-md rounded-3xl p-8"
+            >
+              <div className="mb-6 flex items-center justify-between">
+                <h2 className="text-xl font-bold">应用设置</h2>
+                <Button variant="ghost" size="icon" onClick={() => setShowSettings(false)} className="rounded-full">
+                  <X className="h-5 w-5" />
                 </Button>
               </div>
 
-              <div className="mt-5 space-y-3">
-                <input
-                  type="password"
-                  value={apiKeyInput}
-                  onChange={(event) => setApiKeyInput(event.target.value)}
-                  placeholder={apiKeyConfigured ? "已配置，输入新 Key 可覆盖" : "粘贴 Gemini API Key"}
-                  className="h-11 w-full rounded-md border border-white/10 bg-black/26 px-3 text-sm text-white/82 outline-none transition placeholder:text-white/28 focus:border-cyan-100/36"
-                />
-                <div className="flex items-center justify-between text-xs text-white/36">
-                  <span>{apiKeyConfigured ? `当前来源：${apiKeySource || "应用设置"}` : "当前未配置"}</span>
-                  {settingsError && <span className="text-rose-200/80">{settingsError}</span>}
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-white/60">Gemini API Key</label>
+                  <input 
+                    type="password"
+                    value={apiKeyInput}
+                    onChange={(e) => setApiKeyInput(e.target.value)}
+                    placeholder={apiKeyConfigured ? "已配置 (留空保留当前密钥)" : "输入你的 Gemini API Key"}
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm outline-none transition focus:border-primary/50 focus:bg-white/10"
+                  />
+                  {settingsError && <p className="text-xs text-destructive">{settingsError}</p>}
                 </div>
-              </div>
 
-              <div className="mt-5 flex items-center justify-end gap-2">
-                <Button
-                  type="button"
-                  disabled={isSavingSettings || (!apiKeyConfigured && !apiKeyInput.trim())}
-                  onClick={saveApiKey}
-                  className="h-9 rounded-full bg-white px-4 text-sm text-black hover:bg-cyan-100"
-                >
-                  {isSavingSettings ? "保存中" : "保存"}
-                </Button>
-                {apiKeyConfigured && (
-                  <Button
-                    type="button"
+                <div className="flex gap-3 pt-4">
+                  <Button 
+                    className="flex-1 rounded-xl h-12" 
+                    onClick={saveApiKey}
                     disabled={isSavingSettings}
-                    onClick={() => {
-                      setApiKeyInput("");
-                      setSettingsError(null);
-                      invoke("set_api_key", { apiKey: "" })
-                        .then(() => {
-                          GeminiLiveClient.resetApiClient();
-                          return refreshApiKeyStatus();
-                        })
-                        .then((status) => {
-                          addLog(status.configured ? "[设置] 已清除应用设置，继续使用环境变量" : "[设置] Gemini API Key 已清除");
-                          setShowSettings(false);
-                        })
-                        .catch((error: unknown) => setSettingsError(errorMessage(error)));
-                    }}
-                    className="h-9 rounded-full bg-white/4.5 px-4 text-sm text-white/52 hover:bg-white/10"
                   >
-                    清除
+                    {isSavingSettings ? "正在保存..." : "保存设置"}
                   </Button>
-                )}
+                  <Button 
+                    variant="outline" 
+                    className="flex-1 rounded-xl h-12 border-white/10" 
+                    onClick={runSelfTest}
+                    disabled={isBusy}
+                  >
+                    运行自检
+                  </Button>
+                </div>
               </div>
-            </div>
+            </motion.div>
           </div>
         )}
-      </div>
+      </AnimatePresence>
+
+      {/* Hidden Log Area */}
+      {showLogs && (
+        <div className="fixed left-8 top-24 bottom-24 z-30 w-64 glass-panel rounded-2xl p-4 overflow-hidden flex flex-col">
+          <h3 className="text-xs font-bold text-white/40 uppercase tracking-widest mb-2">系统日志</h3>
+          <ScrollArea className="flex-1 pr-2">
+            <div className="space-y-1 text-[10px] font-mono text-white/60">
+              {logs.map((log, i) => <div key={i} className="leading-tight">{log}</div>)}
+              <div ref={logEndRef} />
+            </div>
+          </ScrollArea>
+        </div>
+      )}
     </main>
   );
+}
+
+function TaskStatusIcon({ phase }: { phase?: AgentTaskPhase }) {
+  switch (phase) {
+    case "completed":
+      return <div className="h-1.5 w-1.5 rounded-full bg-emerald-400" />;
+    case "failed":
+      return <div className="h-1.5 w-1.5 rounded-full bg-rose-400" />;
+    case "running":
+      return <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />;
+    default:
+      return <div className="h-1.5 w-1.5 rounded-full bg-white/20" />;
+  }
 }
