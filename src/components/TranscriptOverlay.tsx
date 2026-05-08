@@ -28,8 +28,8 @@ export function TranscriptOverlay({ messages, visible, pinned }: TranscriptOverl
   const displayMessages = pinned ? messages.slice(-2) : messages.slice(-8);
 
   return (
-    <div className={`pointer-events-none z-10 flex flex-col transition-all duration-500 ${
-      pinned ? "relative bottom-0 top-auto items-start px-0" : "absolute inset-x-0 top-1/4 bottom-1/5 items-center justify-end px-8"
+    <div className={`pointer-events-none flex flex-col transition-all duration-500 ${
+      pinned ? "relative bottom-0 top-auto items-start px-0" : "relative items-center justify-end px-8"
     }`}>
       <div 
         ref={scrollRef}
@@ -71,9 +71,6 @@ export function TranscriptOverlay({ messages, visible, pinned }: TranscriptOverl
                   }`}
                   style={{ textShadow: msg.role === "ai" ? "0 0 8px rgba(255,255,255,0.2)" : "none" }}
                 >
-                  <span className={pinned ? "opacity-40 mr-2" : "hidden"}>
-                    {msg.role === "user" ? "你:" : "AI:"}
-                  </span>
                   {msg.text}
                 </div>
               </motion.div>

@@ -20,8 +20,8 @@ import {
   Terminal,
   VideoOff,
   X,
-  Pin,
-  PinOff,
+  AppWindow,
+  ListTodo,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { SmartOrb } from "@/components/SmartOrb";
@@ -1173,7 +1173,7 @@ export default function JilingPage() {
   const latestOutput = selectedTask?.output || selectedTask?.progress.at(-1) || "本地代理的完整输出会显示在这里。";
   const currentProviderName = providerLabel(selectedProviderId, providers.find((provider) => provider.id === selectedProviderId)?.name);
 
-  const readingModeContent = isTaskPinned ? (
+  const readingModeContent = (isTaskPinned && !isSharing && !isVideoOn) ? (
     <div className="flex h-full w-full flex-col overflow-hidden">
       {/* Header Strip */}
       <div className="flex items-center justify-between border-b border-white/5 bg-white/5 px-6 py-2 backdrop-blur-md">
@@ -1189,8 +1189,8 @@ export default function JilingPage() {
           onClick={() => setIsTaskPinned(false)}
           className="h-7 rounded-full bg-white/5 px-3 text-[10px] text-white/60 hover:bg-white/10 hover:text-white transition-all"
         >
-          <PinOff className="mr-1.5 h-3 w-3" />
-          退出
+          <AppWindow className="mr-1.5 h-3 w-3" />
+          退出阅读模式
         </Button>
       </div>
 
@@ -1211,51 +1211,32 @@ export default function JilingPage() {
           </div>
         </ScrollArea>
 
-        {/* Integrated Footer Subtitle Strip */}
-        <div className="absolute inset-x-0 bottom-0 z-20 flex h-16 items-center border-t border-white/5 bg-black/80 px-6 backdrop-blur-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.6)]">
-          <div className="flex flex-1 items-center gap-4 overflow-hidden">
-            <div className="relative flex h-6 w-6 shrink-0 items-center justify-center">
-              <span className="absolute inset-0 animate-ping rounded-full bg-emerald-500/10"></span>
-              <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div>
-            </div>
-            <div className="flex-1 overflow-hidden">
-              <TranscriptOverlay 
-                messages={transcript} 
-                visible={showTranscript && isConnected && status !== "idle"} 
-                pinned={true}
-              />
-            </div>
-          </div>
-          <div className="ml-4 shrink-0 scale-75 transform origin-right">
-            <SmartOrb 
-              volume={volume} 
-              features={audioFeatures} 
-              status={status} 
-              compact={true}
-            />
-          </div>
-        </div>
       </div>
       <canvas ref={canvasRef} className="hidden" />
     </div>
   ) : null;
 
-  const mainDisplayContent = useMemo(() => (isVideoOn || isSharing) ? (
-    <video
-      autoPlay
-      playsInline
-      muted
-      ref={(node) => {
-        if (node) {
-          videoRef.current = node;
-          if (videoStreamRef.current) {
-            node.srcObject = videoStreamRef.current;
-          }
-        }
-      }}
-      className="h-full w-full object-contain"
-    />
-  ) : readingModeContent, [isVideoOn, isSharing, readingModeContent]);
+  const mainDisplayContent = useMemo(() => {
+    if (isSharing || isVideoOn) {
+      return (
+        <video
+          autoPlay
+          playsInline
+          muted
+          ref={(node) => {
+            if (node) {
+              videoRef.current = node;
+              if (videoStreamRef.current) {
+                node.srcObject = videoStreamRef.current;
+              }
+            }
+          }}
+          className="h-full w-full object-contain"
+        />
+      );
+    }
+    return readingModeContent;
+  }, [isVideoOn, isSharing, readingModeContent]);
 
   return (
     <main className="relative h-screen w-full overflow-hidden bg-black text-white selection:bg-primary/30">
@@ -1272,8 +1253,8 @@ export default function JilingPage() {
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.98, y: 10 }}
                 transition={{ type: "spring", damping: 30, stiffness: 300 }}
-                className={`glass-panel relative z-10 flex h-full max-h-[80vh] w-[92%] max-w-5xl items-center justify-center overflow-hidden rounded-3xl border border-white/10 bg-black/20 shadow-2xl transform-gpu ${
-                  isSharing ? "" : "backdrop-blur-3xl"
+                className={`relative z-10 flex h-full max-h-[82vh] w-[94%] max-w-6xl items-center justify-center overflow-hidden rounded-3xl border border-white/10 bg-[#0a0a0a]/80 shadow-2xl ${
+                  (isSharing || isTaskPinned || isVideoOn) ? "" : "glass-panel backdrop-blur-3xl"
                 }`}
               >
                 {mainDisplayContent}
@@ -1298,12 +1279,6 @@ export default function JilingPage() {
         </div>
       </div>
 
- 
-      {/* Transcript Overlay */}
-      <TranscriptOverlay 
-        messages={transcript} 
-        visible={showTranscript && isConnected && status !== "idle" && !isTaskPinned} 
-      />
 
       <header data-tauri-drag-region className="relative z-50 flex items-center justify-between px-8 pt-10 pb-6 select-none">
         <div className="flex items-center gap-6">
@@ -1373,14 +1348,20 @@ export default function JilingPage() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => setIsTaskPinned(!isTaskPinned)}
+            onClick={() => {
+              if (isSharing || isVideoOn) {
+                addLog("[系统] 正在共享屏幕或视频，请先停止后再进入阅读模式");
+                return;
+              }
+              setIsTaskPinned(!isTaskPinned);
+            }}
             className={`relative h-10 w-10 rounded-full border border-white/10 backdrop-blur-md transition-all duration-500 ${
               isTaskPinned 
                 ? "bg-primary/20 text-primary border-primary/40 shadow-[0_0_15px_rgba(72,255,222,0.2)]" 
                 : "bg-white/5 text-white/60 hover:bg-white/10 hover:text-white"
             }`}
           >
-            {isTaskPinned ? <PinOff className="h-5 w-5" /> : <Pin className="h-5 w-5" />}
+            <AppWindow className="h-5 w-5" />
             {isTaskPinned && (
               <span className="absolute -right-1 -top-1 flex h-3 w-3">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
@@ -1438,7 +1419,13 @@ export default function JilingPage() {
         selectedTaskId={selectedTaskId}
         onSelectTask={setSelectedTaskId}
         isPinned={isTaskPinned}
-        onTogglePin={() => setIsTaskPinned(!isTaskPinned)}
+        onTogglePin={() => {
+          if (isSharing || isVideoOn) {
+            addLog("[系统] 正在共享屏幕或视频，请先停止后再进入阅读模式");
+            return;
+          }
+          setIsTaskPinned(!isTaskPinned);
+        }}
       />
 
       {/* Settings Dialog */}
@@ -1504,6 +1491,30 @@ export default function JilingPage() {
               <div ref={logEndRef} />
             </div>
           </ScrollArea>
+        </div>
+      )}
+      {/* Smart Positioning Status Overlay - TOP LAYER */}
+      <div className={`pointer-events-none fixed z-200 transition-all duration-500 ${
+        (isSharing || isTaskPinned || isVideoOn) 
+          ? "bottom-24 right-8 w-full max-w-sm" 
+          : "bottom-24 left-1/2 w-full max-w-4xl -translate-x-1/2 px-8"
+      }`}>
+        <TranscriptOverlay 
+          messages={transcript} 
+          visible={showTranscript && isConnected && status !== "idle"} 
+          pinned={isSharing || isTaskPinned || isVideoOn}
+        />
+      </div>
+
+      {/* Compact Orb (Only in content modes) - TOP LAYER */}
+      {(isSharing || isTaskPinned || isVideoOn) && (
+        <div className="pointer-events-none fixed bottom-8 right-8 z-200 scale-75 transform origin-right">
+          <SmartOrb
+            volume={volume}
+            features={audioFeatures}
+            status={status}
+            compact={true}
+          />
         </div>
       )}
     </main>
