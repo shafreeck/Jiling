@@ -103,7 +103,7 @@ export function ControlBar({
                 size="icon"
                 onClick={onToggleShare}
                 className={`h-12 w-12 rounded-full transition-all ${
-                  isSharing ? "bg-destructive/20 text-destructive shadow-[0_0_15px_rgba(239,68,68,0.2)]" : "hover:bg-white/10 text-white/60 hover:text-white"
+                  isSharing ? "bg-destructive/20 text-destructive shadow-[0_0_15px_rgba(239,68,68,0.2)] hover:bg-destructive/30" : "hover:bg-white/10 text-white/60 hover:text-white"
                 }`}
               >
                 <MonitorUp className="h-5 w-5" />
@@ -143,7 +143,7 @@ export function ControlBar({
                 onClick={isConnected ? onDisconnect : onConnect}
                 className={`h-12 w-12 rounded-full transition-all hover:scale-105 active:scale-95 shadow-lg ${
                   isConnected 
-                    ? "bg-destructive/20 text-destructive shadow-destructive/10" 
+                    ? "bg-destructive/20 text-destructive shadow-destructive/10 hover:bg-destructive/30" 
                     : "bg-linear-to-br from-sky-400 to-indigo-600 text-white shadow-blue-500/30 hover:shadow-blue-500/50"
                 }`}
               >

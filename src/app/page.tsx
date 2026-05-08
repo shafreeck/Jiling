@@ -447,6 +447,12 @@ export default function JilingPage() {
   const videoStreamRef = useRef<MediaStream | null>(null);
   const captureTimerRef = useRef<number | null>(null);
 
+  // Reset busy state on mount to prevent stale locks from HMR
+  useEffect(() => {
+    setIsBusy(false);
+    startingRef.current = false;
+  }, []);
+
   const stopVideoStream = () => {
     if (captureTimerRef.current) {
       window.clearInterval(captureTimerRef.current);
@@ -688,15 +694,19 @@ export default function JilingPage() {
   };
 
   const startMic = async (context: AudioContext) => {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-        channelCount: 1,
-      },
-    });
-    mediaStreamRef.current = stream;
+    try {
+      if (context.state === "suspended") {
+        await context.resume();
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1,
+        },
+      });
+      mediaStreamRef.current = stream;
 
     const source = context.createMediaStreamSource(stream);
     const processor = context.createScriptProcessor(2048, 1, 1);
@@ -715,6 +725,10 @@ export default function JilingPage() {
 
     source.connect(processor);
     processor.connect(context.destination);
+    } catch (error: unknown) {
+      addLog(`[系统] 麦克风启动失败: ${errorMessage(error)}`);
+      throw error;
+    }
   };
 
   const createClient = (profile?: AgentRuntimeProfile) => {
@@ -1226,7 +1240,7 @@ export default function JilingPage() {
     </div>
   ) : null;
 
-  const mainDisplayContent = (isVideoOn || isSharing) ? (
+  const mainDisplayContent = useMemo(() => (isVideoOn || isSharing) ? (
     <video
       autoPlay
       playsInline
@@ -1241,7 +1255,7 @@ export default function JilingPage() {
       }}
       className="h-full w-full object-contain"
     />
-  ) : readingModeContent;
+  ) : readingModeContent, [isVideoOn, isSharing, readingModeContent]);
 
   return (
     <main className="relative h-screen w-full overflow-hidden bg-black text-white selection:bg-primary/30">
@@ -1258,7 +1272,9 @@ export default function JilingPage() {
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.98, y: 10 }}
                 transition={{ type: "spring", damping: 30, stiffness: 300 }}
-                className="glass-panel relative z-10 flex h-full max-h-[80vh] w-[92%] max-w-5xl items-center justify-center overflow-hidden rounded-3xl border border-white/10 bg-black/20 shadow-2xl backdrop-blur-3xl transform-gpu"
+                className={`glass-panel relative z-10 flex h-full max-h-[80vh] w-[92%] max-w-5xl items-center justify-center overflow-hidden rounded-3xl border border-white/10 bg-black/20 shadow-2xl transform-gpu ${
+                  isSharing ? "" : "backdrop-blur-3xl"
+                }`}
               >
                 {mainDisplayContent}
               </motion.div>
@@ -1283,6 +1299,12 @@ export default function JilingPage() {
       </div>
 
  
+      {/* Transcript Overlay */}
+      <TranscriptOverlay 
+        messages={transcript} 
+        visible={showTranscript && isConnected && status !== "idle" && !isTaskPinned} 
+      />
+
       <header data-tauri-drag-region className="relative z-50 flex items-center justify-between px-8 pt-10 pb-6 select-none">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
