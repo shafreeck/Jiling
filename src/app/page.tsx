@@ -1246,6 +1246,30 @@ export default function JilingPage() {
 
   return (
     <main className="relative h-screen w-full overflow-hidden bg-black text-white selection:bg-primary/30">
+      {/* Window Breathing Edge Glow */}
+      <AnimatePresence>
+        {status !== "idle" && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ 
+              opacity: status === "speaking" ? 0.3 + (volume * 0.7) : 0.2,
+              boxShadow: status === "thinking" 
+                ? "inset 0 0 80px rgba(168, 85, 247, 0.4)" // Purple for thinking
+                : status === "listening"
+                ? "inset 0 0 60px rgba(72, 255, 222, 0.3)"  // Cyan for listening
+                : `inset 0 0 ${60 + (volume * 100)}px rgba(16, 185, 129, 0.5)`, // Dynamic pulse for speaking
+            }}
+            exit={{ opacity: 0 }}
+            transition={{ 
+              duration: (status === "thinking" || status === "listening") ? 1.5 : 0.15,
+              repeat: (status === "thinking" || status === "listening") ? Infinity : 0,
+              repeatType: "reverse"
+            }}
+            className="pointer-events-none fixed inset-0 z-[400] border border-white/5"
+          />
+        )}
+      </AnimatePresence>
+
       {/* Dynamic Toast Notification */}
       <AnimatePresence>
         {toast && (

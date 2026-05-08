@@ -65,9 +65,9 @@ export function TranscriptOverlay({ messages, visible, pinned }: TranscriptOverl
                   className={`rounded-2xl transition-all duration-500 ${
                     pinned 
                       ? "max-w-[95%] px-0 py-0.5 text-sm" 
-                      : "max-w-[85%] px-4 py-2 text-base border border-white/10 shadow-md bg-white/15"
+                      : "max-w-[85%] px-4 py-2 text-base border border-white/5 shadow-xl bg-black/20 backdrop-blur-md"
                   } ${
-                    msg.role === "user" ? "text-white" : "text-white/95"
+                    msg.role === "user" ? "text-white/90" : "text-white/80"
                   }`}
                   style={{ textShadow: msg.role === "ai" ? "0 0 8px rgba(255,255,255,0.2)" : "none" }}
                 >
