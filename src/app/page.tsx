@@ -1248,20 +1248,35 @@ export default function JilingPage() {
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_43%,rgba(72,255,222,0.08),transparent_24%),radial-gradient(circle_at_56%_39%,rgba(255,93,184,0.05),transparent_22%)]" />
         
         <div className="flex h-full w-full items-center justify-center px-4 pb-20 pt-24">
-          {mainDisplayContent ? (
-            <div className="glass-panel relative flex h-full max-h-[80vh] w-[92%] max-w-5xl items-center justify-center overflow-hidden rounded-3xl border border-white/10 bg-black/20 shadow-2xl backdrop-blur-3xl transition-all duration-700">
-              {mainDisplayContent}
-            </div>
-          ) : (
-            <div className="relative flex flex-col items-center">
-              <SmartOrb
-                volume={volume}
-                features={audioFeatures}
-                status={status}
-                compact={false}
-              />
-            </div>
-          )}
+          <AnimatePresence mode="wait">
+            {mainDisplayContent ? (
+              <motion.div
+                key="main-display"
+                initial={{ opacity: 0, scale: 0.98, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.98, y: 10 }}
+                transition={{ type: "spring", damping: 30, stiffness: 300 }}
+                className="glass-panel relative flex h-full max-h-[80vh] w-[92%] max-w-5xl items-center justify-center overflow-hidden rounded-3xl border border-white/10 bg-black/20 shadow-2xl backdrop-blur-3xl transform-gpu"
+              >
+                {mainDisplayContent}
+              </motion.div>
+            ) : (
+              <motion.div
+                key="orb-display"
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                className="relative flex flex-col items-center"
+              >
+                <SmartOrb
+                  volume={volume}
+                  features={audioFeatures}
+                  status={status}
+                  compact={false}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 
