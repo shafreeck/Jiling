@@ -1,6 +1,6 @@
 [package]
-name = "jiling"
-default-run = "jiling"
+name = "Jiling"
+default-run = "Jiling"
 version = "0.1.0"
 description = "机灵 (Jiling) - AI Voice Agent"
 authors = ["you"]

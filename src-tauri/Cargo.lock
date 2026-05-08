@@ -3,6 +3,34 @@
 version = 3
 
 [[package]]
+name = "Jiling"
+version = "0.1.0"
+dependencies = [
+ "agent-client-protocol",
+ "agent-client-protocol-tokio",
+ "base64 0.22.1",
+ "dashmap",
+ "dotenvy",
+ "ed25519-dalek",
+ "futures-util",
+ "hex",
+ "log",
+ "pkcs8",
+ "rand",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-fs",
+ "tauri-plugin-log",
+ "tauri-plugin-shell",
+ "tokio",
+ "tokio-tungstenite",
+]
+
+[[package]]
 name = "adler2"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1996,34 +2024,6 @@ dependencies = [
  "gobject-sys",
  "libc",
  "system-deps",
-]
-
-[[package]]
-name = "jiling"
-version = "0.1.0"
-dependencies = [
- "agent-client-protocol",
- "agent-client-protocol-tokio",
- "base64 0.22.1",
- "dashmap",
- "dotenvy",
- "ed25519-dalek",
- "futures-util",
- "hex",
- "log",
- "pkcs8",
- "rand",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2",
- "tauri",
- "tauri-build",
- "tauri-plugin-fs",
- "tauri-plugin-log",
- "tauri-plugin-shell",
- "tokio",
- "tokio-tungstenite",
 ]
 
 [[package]]
