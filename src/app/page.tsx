@@ -397,6 +397,12 @@ export default function JilingPage() {
   }, [selectedProviderId]);
   const [focusMode, setFocusMode] = useState(true);
   const [showLogs, setShowLogs] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: "info" | "error" } | null>(null);
+
+  const showToast = (message: string, type: "info" | "error" = "info") => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [agentTasks, setAgentTasks] = useState<AgentTaskView[]>([]);
   const [apiKeyConfigured, setApiKeyConfigured] = useState<boolean | null>(null);
@@ -1240,6 +1246,25 @@ export default function JilingPage() {
 
   return (
     <main className="relative h-screen w-full overflow-hidden bg-black text-white selection:bg-primary/30">
+      {/* Dynamic Toast Notification */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ y: -50, opacity: 0, x: "-50%" }}
+            animate={{ y: 20, opacity: 1, x: "-50%" }}
+            exit={{ y: -50, opacity: 0, x: "-50%" }}
+            className={`fixed left-1/2 top-4 z-300 flex items-center gap-3 rounded-2xl border px-6 py-3 shadow-2xl backdrop-blur-xl ${
+              toast.type === "error" 
+                ? "border-destructive/40 bg-destructive/10 text-destructive" 
+                : "border-white/10 bg-white/5 text-white"
+            }`}
+          >
+            <div className={`h-2 w-2 rounded-full ${toast.type === "error" ? "bg-destructive animate-pulse" : "bg-primary animate-pulse"}`} />
+            <span className="text-sm font-medium tracking-wide">{toast.message}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Background Stage */}
       <div className="absolute inset-0 z-0">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_43%,rgba(72,255,222,0.08),transparent_24%),radial-gradient(circle_at_56%_39%,rgba(255,93,184,0.05),transparent_22%)]" />
@@ -1350,7 +1375,7 @@ export default function JilingPage() {
             size="icon"
             onClick={() => {
               if (isSharing || isVideoOn) {
-                addLog("[系统] 正在共享屏幕或视频，请先停止后再进入阅读模式");
+                showToast("正在共享屏幕或视频，请先停止后再进入阅读模式", "error");
                 return;
               }
               setIsTaskPinned(!isTaskPinned);
@@ -1421,7 +1446,7 @@ export default function JilingPage() {
         isPinned={isTaskPinned}
         onTogglePin={() => {
           if (isSharing || isVideoOn) {
-            addLog("[系统] 正在共享屏幕或视频，请先停止后再进入阅读模式");
+            showToast("正在共享屏幕或视频，请先停止后再进入阅读模式", "error");
             return;
           }
           setIsTaskPinned(!isTaskPinned);
