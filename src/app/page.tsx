@@ -1286,10 +1286,8 @@ export default function JilingPage() {
         visible={showTranscript && isConnected && status !== "idle" && !isTaskPinned} 
       />
 
-      <header data-tauri-drag-region className="relative z-20 flex items-center justify-between px-8 py-6 pl-20 select-none">
+      <header data-tauri-drag-region className="relative z-20 flex items-center justify-between px-8 pt-10 pb-6 select-none">
         <div className="flex items-center gap-6">
-          <div className="brand-word text-2xl tracking-widest text-white/90">机灵</div>
-          <div className="h-4 w-px bg-white/10" />
           <div className="flex items-center gap-2">
             <label className="relative">
               <Sparkles className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/40" />
