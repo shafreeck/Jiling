@@ -1205,7 +1205,7 @@ export default function JilingPage() {
         {/* Integrated Footer Subtitle Strip */}
         <div className="absolute inset-x-0 bottom-0 z-20 flex h-16 items-center border-t border-white/5 bg-black/80 px-6 backdrop-blur-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.6)]">
           <div className="flex flex-1 items-center gap-4 overflow-hidden">
-            <div className="relative flex h-6 w-6 flex-shrink-0 items-center justify-center">
+            <div className="relative flex h-6 w-6 shrink-0 items-center justify-center">
               <span className="absolute inset-0 animate-ping rounded-full bg-emerald-500/10"></span>
               <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div>
             </div>
@@ -1217,7 +1217,7 @@ export default function JilingPage() {
               />
             </div>
           </div>
-          <div className="ml-4 flex-shrink-0 scale-75 transform origin-right">
+          <div className="ml-4 shrink-0 scale-75 transform origin-right">
             <SmartOrb 
               volume={volume} 
               features={audioFeatures} 
@@ -1441,7 +1441,7 @@ export default function JilingPage() {
 
                 <div className="flex gap-3 pt-4">
                   <Button 
-                    className="flex-1 rounded-xl h-12" 
+                    className="flex-1 rounded-xl h-12 bg-emerald-500 text-black hover:bg-emerald-400 font-bold transition-all shadow-[0_0_15px_rgba(16,185,129,0.2)]" 
                     onClick={saveApiKey}
                     disabled={isSavingSettings}
                   >
@@ -1449,7 +1449,7 @@ export default function JilingPage() {
                   </Button>
                   <Button 
                     variant="outline" 
-                    className="flex-1 rounded-xl h-12 border-white/10" 
+                    className="flex-1 rounded-xl h-12 border-white/10 bg-white/5 text-white hover:bg-white/10 hover:border-white/20 transition-all" 
                     onClick={runSelfTest}
                     disabled={isBusy}
                   >
