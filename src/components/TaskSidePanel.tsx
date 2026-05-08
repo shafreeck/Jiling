@@ -116,7 +116,7 @@ export function TaskSidePanel({
 
               {/* Task Detail */}
               {selectedTask && (
-                <div className="flex flex-1 flex-col overflow-hidden bg-white/2">
+                <div className="flex flex-1 flex-col min-h-0 bg-white/2">
                   <ScrollArea className="flex-1">
                     <div className="p-6 space-y-6">
                       <div>
@@ -127,11 +127,13 @@ export function TaskSidePanel({
                             <span className="text-xs text-white/40">{selectedTask.providerName}</span>
                           </div>
                           <Button 
-                            variant="ghost" 
+                            variant="secondary" 
                             size="sm" 
                             onClick={onTogglePin}
-                            className={`h-7 px-2 rounded-lg text-[10px] flex items-center gap-1 ${
-                              isPinned ? "bg-primary/20 text-primary hover:bg-primary/30" : "text-white/40 hover:text-white"
+                            className={`h-7 px-2.5 rounded-lg text-[10px] font-medium border transition-all ${
+                              isPinned 
+                                ? "bg-primary/20 text-primary border-primary/30 hover:bg-primary/30" 
+                                : "bg-white/5 text-white/70 border-white/10 hover:bg-white/15 hover:text-white"
                             }`}
                           >
                             {isPinned ? <PinOff className="h-3 w-3" /> : <Pin className="h-3 w-3" />}

@@ -20,6 +20,7 @@ import {
   Terminal,
   VideoOff,
   X,
+  Pin,
   PinOff,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -1163,7 +1164,7 @@ export default function JilingPage() {
   const latestOutput = selectedTask?.output || selectedTask?.progress.at(-1) || "本地代理的完整输出会显示在这里。";
   const currentProviderName = providerLabel(selectedProviderId, providers.find((provider) => provider.id === selectedProviderId)?.name);
 
-  const readingModeContent = (isTaskPinned && activeTask?.output) ? (
+  const readingModeContent = isTaskPinned ? (
     <div className="flex h-full w-full flex-col overflow-hidden">
       {/* Header Strip */}
       <div className="flex items-center justify-between border-b border-white/5 bg-white/5 px-6 py-2 backdrop-blur-md">
@@ -1171,7 +1172,7 @@ export default function JilingPage() {
           <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-primary/20 bg-primary/10">
             <ListChecks className="h-3.5 w-3.5 text-primary" />
           </div>
-          <h3 className="text-base font-bold text-white">{activeTask?.title}</h3>
+          <h3 className="text-base font-bold text-white">{activeTask?.title || "等待任务中..."}</h3>
         </div>
         <Button 
           variant="ghost" 
@@ -1188,9 +1189,16 @@ export default function JilingPage() {
       <div className="relative flex-1 min-h-0 overflow-hidden">
         <ScrollArea className="h-full w-full">
           <div className="prose max-w-none px-6 py-4 pb-32">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {cleanTranscriptText(activeTask?.output || "")}
-            </ReactMarkdown>
+            {activeTask?.output ? (
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {cleanTranscriptText(activeTask.output)}
+              </ReactMarkdown>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-20 text-center text-white/20">
+                <Sparkles className="mb-4 h-12 w-12 animate-pulse" />
+                <p className="text-sm tracking-widest">正在等待任务内容输出...</p>
+              </div>
+            )}
           </div>
         </ScrollArea>
 
@@ -1329,14 +1337,33 @@ export default function JilingPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setIsSidePanelOpen(true)}
-            className="relative h-10 w-10 rounded-full border border-white/10 bg-white/5 backdrop-blur-md text-white/60 hover:bg-white/10 hover:text-white"
-          >
-            <ListChecks className="h-5 w-5" />
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsTaskPinned(!isTaskPinned)}
+              className={`relative h-10 w-10 rounded-full border border-white/10 backdrop-blur-md transition-all duration-500 ${
+                isTaskPinned 
+                  ? "bg-primary/20 text-primary border-primary/40 shadow-[0_0_15px_rgba(72,255,222,0.2)]" 
+                  : "bg-white/5 text-white/60 hover:bg-white/10 hover:text-white"
+              }`}
+            >
+              {isTaskPinned ? <PinOff className="h-5 w-5" /> : <Pin className="h-5 w-5" />}
+              {isTaskPinned && (
+                <span className="absolute -right-1 -top-1 flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-primary"></span>
+                </span>
+              )}
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsSidePanelOpen(true)}
+              className="relative h-10 w-10 rounded-full border border-white/10 bg-white/5 backdrop-blur-md text-white/60 hover:bg-white/10 hover:text-white"
+            >
+              <ListChecks className="h-5 w-5" />
             {runningTasks.length > 0 && (
               <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white shadow-lg">
                 {runningTasks.length}
