@@ -21,7 +21,16 @@ export function TranscriptOverlay({ messages, visible, pinned }: TranscriptOverl
 
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
+      // Only auto-scroll if user is already near the bottom (within 100px)
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+      
+      if (isNearBottom || messages.length <= 1) {
+        scrollRef.current.scrollTo({
+          top: scrollRef.current.scrollHeight,
+          behavior: messages.length <= 1 ? "auto" : "smooth"
+        });
+      }
     }
   }, [messages]);
 
@@ -33,12 +42,14 @@ export function TranscriptOverlay({ messages, visible, pinned }: TranscriptOverl
     }`}>
       <div 
         ref={scrollRef}
-        className={`transcript-fade-mask flex w-full flex-col gap-1 overflow-hidden transition-all ${
-          pinned ? "max-w-none" : "max-w-2xl py-4"
-        }`}
+        className={`transcript-fade-mask flex w-full flex-col gap-1 overflow-y-auto pointer-events-auto transition-all ${
+          pinned ? "max-w-none max-h-40" : "max-w-2xl max-h-[60vh] py-4"
+        } scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent hover:scrollbar-thumb-white/20`}
         style={{ 
-          maskImage: 'linear-gradient(to top, black 30%, rgba(0,0,0,0.4) 65%, transparent 100%)',
-          WebkitMaskImage: 'linear-gradient(to top, black 30%, rgba(0,0,0,0.4) 65%, transparent 100%)'
+          maskImage: 'linear-gradient(to top, black 85%, transparent 100%)',
+          WebkitMaskImage: 'linear-gradient(to top, black 85%, transparent 100%)',
+          scrollbarWidth: 'thin',
+          scrollbarColor: 'rgba(255,255,255,0.1) transparent'
         }}
       >
         <AnimatePresence>
