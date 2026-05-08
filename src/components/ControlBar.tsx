@@ -12,6 +12,7 @@ import {
   LogOut,
   AudioLines,
   X,
+  PhoneOff,
   MoreVertical
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -102,7 +103,7 @@ export function ControlBar({
                 size="icon"
                 onClick={onToggleShare}
                 className={`h-12 w-12 rounded-full transition-all ${
-                  isSharing ? "bg-primary/20 text-primary" : "hover:bg-white/10 text-white"
+                  isSharing ? "bg-destructive/20 text-destructive shadow-[0_0_15px_rgba(239,68,68,0.2)]" : "hover:bg-white/10 text-white/60 hover:text-white"
                 }`}
               >
                 <MonitorUp className="h-5 w-5" />
@@ -136,16 +137,21 @@ export function ControlBar({
           <TooltipTrigger 
             render={
               <Button
-                variant={isConnected ? "destructive" : "default"}
+                variant="ghost"
                 size="icon"
                 disabled={isBusy}
                 onClick={isConnected ? onDisconnect : onConnect}
-                className={`h-12 w-12 rounded-full shadow-lg transition-all hover:scale-105 active:scale-95 ${
-                  !isConnected ? "bg-emerald-500 hover:bg-emerald-600 text-white" : ""
+                className={`h-12 w-12 rounded-full transition-all hover:scale-105 active:scale-95 shadow-lg ${
+                  isConnected 
+                    ? "bg-destructive/20 text-destructive shadow-destructive/10" 
+                    : "bg-linear-to-br from-sky-400 to-indigo-600 text-white shadow-blue-500/30 hover:shadow-blue-500/50"
                 }`}
               >
                 {isConnected ? (
-                  <X className="h-5 w-5" />
+                  <div className="relative flex items-center justify-center">
+                    <AudioLines className="h-5 w-5 opacity-40" />
+                    <div className="absolute h-[1.5px] w-6 rotate-45 bg-current" />
+                  </div>
                 ) : (
                   <AudioLines className={`h-5 w-5 ${isBusy ? "animate-pulse" : ""}`} />
                 )}
