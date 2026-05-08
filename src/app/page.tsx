@@ -1286,7 +1286,7 @@ export default function JilingPage() {
         visible={showTranscript && isConnected && status !== "idle" && !isTaskPinned} 
       />
 
-      <header className="relative z-20 flex items-center justify-between px-8 py-6">
+      <header data-tauri-drag-region className="relative z-20 flex items-center justify-between px-8 py-6 pl-20 select-none">
         <div className="flex items-center gap-6">
           <div className="brand-word text-2xl tracking-widest text-white/90">机灵</div>
           <div className="h-4 w-px bg-white/10" />
@@ -1352,33 +1352,33 @@ export default function JilingPage() {
           </div>
         </div>
 
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setIsTaskPinned(!isTaskPinned)}
-              className={`relative h-10 w-10 rounded-full border border-white/10 backdrop-blur-md transition-all duration-500 ${
-                isTaskPinned 
-                  ? "bg-primary/20 text-primary border-primary/40 shadow-[0_0_15px_rgba(72,255,222,0.2)]" 
-                  : "bg-white/5 text-white/60 hover:bg-white/10 hover:text-white"
-              }`}
-            >
-              {isTaskPinned ? <PinOff className="h-5 w-5" /> : <Pin className="h-5 w-5" />}
-              {isTaskPinned && (
-                <span className="absolute -right-1 -top-1 flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-primary"></span>
-                </span>
-              )}
-            </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsTaskPinned(!isTaskPinned)}
+            className={`relative h-10 w-10 rounded-full border border-white/10 backdrop-blur-md transition-all duration-500 ${
+              isTaskPinned 
+                ? "bg-primary/20 text-primary border-primary/40 shadow-[0_0_15px_rgba(72,255,222,0.2)]" 
+                : "bg-white/5 text-white/60 hover:bg-white/10 hover:text-white"
+            }`}
+          >
+            {isTaskPinned ? <PinOff className="h-5 w-5" /> : <Pin className="h-5 w-5" />}
+            {isTaskPinned && (
+              <span className="absolute -right-1 -top-1 flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-primary"></span>
+              </span>
+            )}
+          </Button>
 
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setIsSidePanelOpen(true)}
-              className="relative h-10 w-10 rounded-full border border-white/10 bg-white/5 backdrop-blur-md text-white/60 hover:bg-white/10 hover:text-white"
-            >
-              <ListChecks className="h-5 w-5" />
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsSidePanelOpen(true)}
+            className="relative h-10 w-10 rounded-full border border-white/10 bg-white/5 backdrop-blur-md text-white/60 hover:bg-white/10 hover:text-white"
+          >
+            <ListChecks className="h-5 w-5" />
             {runningTasks.length > 0 && (
               <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white shadow-lg">
                 {runningTasks.length}
@@ -1390,7 +1390,7 @@ export default function JilingPage() {
             variant="ghost"
             size="icon"
             onClick={() => setShowSettings(true)}
-            className="h-10 w-10 rounded-full border border-white/10 bg-white/5 backdrop-blur-md text-white/60 hover:bg-white/10 hover:text-white"
+            className="h-10 w-10 rounded-full border border-white/10 bg-white/5 backdrop-blur-md text-white/60 hover:bg-white/10 hover:text-white transition-all"
           >
             <KeyRound className="h-5 w-5" />
           </Button>

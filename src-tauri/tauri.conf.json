@@ -13,10 +13,13 @@
     "windows": [
       {
         "title": "机灵",
-        "width": 800,
-        "height": 600,
+        "width": 1000,
+        "height": 750,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "decorations": true,
+        "transparent": true,
+        "titleBarStyle": "Overlay"
       }
     ],
     "security": {

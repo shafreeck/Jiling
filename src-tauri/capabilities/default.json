@@ -8,6 +8,7 @@
   "permissions": [
     "core:default",
     "fs:default",
+    "core:window:allow-start-dragging",
     {
       "identifier": "fs:allow-read",
       "allow": [
