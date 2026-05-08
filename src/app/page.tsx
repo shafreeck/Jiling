@@ -459,11 +459,6 @@ export default function JilingPage() {
   };
 
   // Sync video stream to element when it appears in DOM
-  useEffect(() => {
-    if (videoRef.current && videoStreamRef.current) {
-      videoRef.current.srcObject = videoStreamRef.current;
-    }
-  }, [isVideoOn, isSharing]);
 
   // Automate frame capture when connected and video/sharing is active
   useEffect(() => {
@@ -1233,11 +1228,18 @@ export default function JilingPage() {
 
   const mainDisplayContent = (isVideoOn || isSharing) ? (
     <video
-      ref={videoRef}
       autoPlay
       playsInline
       muted
-      className="h-full w-full object-cover"
+      ref={(node) => {
+        if (node) {
+          videoRef.current = node;
+          if (videoStreamRef.current) {
+            node.srcObject = videoStreamRef.current;
+          }
+        }
+      }}
+      className="h-full w-full object-contain"
     />
   ) : readingModeContent;
 
@@ -1256,7 +1258,7 @@ export default function JilingPage() {
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.98, y: 10 }}
                 transition={{ type: "spring", damping: 30, stiffness: 300 }}
-                className="glass-panel relative flex h-full max-h-[80vh] w-[92%] max-w-5xl items-center justify-center overflow-hidden rounded-3xl border border-white/10 bg-black/20 shadow-2xl backdrop-blur-3xl transform-gpu"
+                className="glass-panel relative z-10 flex h-full max-h-[80vh] w-[92%] max-w-5xl items-center justify-center overflow-hidden rounded-3xl border border-white/10 bg-black/20 shadow-2xl backdrop-blur-3xl transform-gpu"
               >
                 {mainDisplayContent}
               </motion.div>
@@ -1280,13 +1282,8 @@ export default function JilingPage() {
         </div>
       </div>
 
-      {/* Transcript Overlay */}
-      <TranscriptOverlay 
-        messages={transcript} 
-        visible={showTranscript && isConnected && status !== "idle" && !isTaskPinned} 
-      />
-
-      <header data-tauri-drag-region className="relative z-20 flex items-center justify-between px-8 pt-10 pb-6 select-none">
+ 
+      <header data-tauri-drag-region className="relative z-50 flex items-center justify-between px-8 pt-10 pb-6 select-none">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
             <label className="relative">
