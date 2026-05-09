@@ -125,15 +125,9 @@ const CanvasCard = ({ nodes, links }: CanvasCardProps) => {
                         fontSize: 10
                     },
                     lineStyle: {
-                        color: 'rgba(255,255,255,0.35)',
+                        color: 'rgba(255,255,255,0.4)',
                         width: 1.5,
                         curveness: 0.1
-                    },
-                    blur: {
-                        lineStyle: {
-                            color: 'rgba(255, 255, 255, 0.1)',
-                            width: 1
-                        }
                     }
                 })),
                 lineStyle: {
