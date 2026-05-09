@@ -145,7 +145,6 @@ const CanvasCard = ({ nodes, links }: CanvasCardProps) => {
             className="w-full bg-[#19191e]/40 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden my-4"
             style={{ height: '320px' }}
             onClick={e => e.stopPropagation()}
-            onMouseDown={e => e.stopPropagation()}
         >
             <ReactECharts 
                 ref={echartsRef}
