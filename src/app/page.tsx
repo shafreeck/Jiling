@@ -2032,6 +2032,7 @@ Output format: { "type": "a2ui", "requestId": "unique_id", "payload": { "compone
                 <div className="max-h-[60vh] overflow-y-auto p-2 custom-scrollbar">
                   <AuraRenderer
                     content={activeA2UITask.output!}
+                    latestOnly={true}
                     onAction={(action, data) => {
                       handleTaskA2UIAction(activeA2UITask.runId, action, data);
                       setDismissedA2UIs(prev => new Map(prev).set(activeA2UITask.runId, activeA2UITask.output!));
