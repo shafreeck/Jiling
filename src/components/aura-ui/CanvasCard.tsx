@@ -56,7 +56,7 @@ const CanvasCard = ({ nodes, links }: CanvasCardProps) => {
             textStyle: { color: '#fff', fontSize: 12 },
             formatter: (params: any) => {
                 if (params.dataType === 'node') {
-                    return `${params.data.nodeLabel} <span style="color: ${getStatusColor(params.data.status)}">(${params.data.status})</span>`;
+                    return `${params.data.nodeLabel}`;
                 }
                 return params.data.label || 'Connection';
             }
