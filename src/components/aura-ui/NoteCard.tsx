@@ -4,8 +4,12 @@ import remarkGfm from 'remark-gfm';
 import { ListTodo, CheckSquare, Square, CheckCircle2, XCircle, Activity, Clock } from "lucide-react";
 
 const NoteCard = ({ content }: { content: string }) => {
+    const hasTaskList = content.includes('- [ ]') || content.includes('- [x]');
+    
     return (
-        <div className="w-full max-w-none wrap-break-word overflow-x-hidden font-sans p-6 bg-[#19191e]/40 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl">
+        <div className={hasTaskList 
+            ? "w-full max-w-none wrap-break-word overflow-x-hidden font-sans p-6 bg-[#19191e]/40 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl"
+            : "w-full max-w-none wrap-break-word overflow-x-hidden font-sans"}>
             <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
