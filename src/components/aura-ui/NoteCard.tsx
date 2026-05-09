@@ -84,9 +84,10 @@ const NoteCard = ({ content }: { content: string }) => {
                             className="text-emerald-400 hover:text-emerald-300 underline cursor-pointer" 
                             onClick={(e) => {
                                 e.preventDefault();
-                                if (props.href) {
+                                const href = props.href;
+                                if (href) {
                                     import('@tauri-apps/plugin-shell').then(({ open }) => {
-                                        open(props.href).catch(console.error);
+                                        open(href).catch(console.error);
                                     }).catch(console.error);
                                 }
                             }}
