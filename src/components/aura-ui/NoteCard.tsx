@@ -1,6 +1,7 @@
+import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { CheckCircle2, XCircle, Activity, Clock } from "lucide-react";
+import { CheckSquare, Square, CheckCircle2, XCircle, Activity, Clock } from "lucide-react";
 
 const NoteCard = ({ content }: { content: string }) => {
     return (
@@ -16,7 +17,26 @@ const NoteCard = ({ content }: { content: string }) => {
                     em: ({ node, ...props }) => <em className="italic text-white/70" {...props} />,
                     ul: ({ node, ...props }) => <ul className="list-disc pl-5 my-3 space-y-1.5" {...props} />,
                     ol: ({ node, ...props }) => <ol className="list-decimal pl-5 my-3 space-y-1.5" {...props} />,
-                    li: ({ node, ...props }) => <li className="text-[13px] text-white/90" {...props} />,
+                    li: ({ node, ...props }) => {
+                        const children = React.Children.toArray(props.children);
+                        const hasCheckbox = children.some((child: any) => child.type === 'input' && child.props.type === 'checkbox');
+                        
+                        if (hasCheckbox) {
+                            const isChecked = children.some((child: any) => child.type === 'input' && child.props.checked);
+                            const filteredChildren = children.filter((child: any) => !(child.type === 'input' && child.props.type === 'checkbox'));
+                            
+                            return (
+                                <li className="text-[13px] text-white/90 flex items-start gap-2 my-1.5 list-none -ml-5">
+                                    <span className={isChecked ? "text-emerald-500 mt-0.5" : "text-white/30 mt-0.5"}>
+                                        {isChecked ? <CheckSquare size={15} /> : <Square size={15} />}
+                                    </span>
+                                    <span className={isChecked ? "opacity-50 line-through" : ""}>{filteredChildren}</span>
+                                </li>
+                            );
+                        }
+                        
+                        return <li className="text-[13px] text-white/90" {...props} />;
+                    },
                     code: ({ node, inline, ...props }: any) => {
                         const content = String(props.children).replace(/\n$/, "");
                         const isMultiline = content.includes("\n");
