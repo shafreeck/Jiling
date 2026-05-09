@@ -82,17 +82,6 @@ const CanvasCard = ({ nodes, links }: CanvasCardProps) => {
                         color: 'rgba(255, 255, 255, 0.5)'
                     }
                 },
-                blur: {
-                    itemStyle: {
-                        opacity: 0.4
-                    },
-                    label: {
-                        opacity: 0.4
-                    },
-                    lineStyle: {
-                        opacity: 0.2
-                    }
-                },
                 data: nodes.map(node => ({
                     id: node.id,
                     name: node.id, // Used for linking
@@ -114,6 +103,16 @@ const CanvasCard = ({ nodes, links }: CanvasCardProps) => {
                         fontSize: 11,
                         fontWeight: '700',
                         distance: 8
+                    },
+                    blur: {
+                        itemStyle: {
+                            borderColor: getStatusColor(node.status, 0.4),
+                            color: getStatusColor(node.status, 0.1),
+                            shadowBlur: 5
+                        },
+                        label: {
+                            color: 'rgba(255, 255, 255, 0.4)'
+                        }
                     }
                 })),
                 links: links.map(link => ({
@@ -129,6 +128,12 @@ const CanvasCard = ({ nodes, links }: CanvasCardProps) => {
                         color: 'rgba(255,255,255,0.15)',
                         width: 1.5,
                         curveness: 0.1
+                    },
+                    blur: {
+                        lineStyle: {
+                            color: 'rgba(255, 255, 255, 0.05)',
+                            width: 1
+                        }
                     }
                 })),
                 lineStyle: {
