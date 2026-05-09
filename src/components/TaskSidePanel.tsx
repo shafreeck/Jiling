@@ -58,14 +58,16 @@ export function TaskSidePanel({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm"
+            style={{ zIndex: 999 }}
           />
           <motion.div
             initial={{ x: "100%" }}
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className="fixed right-0 top-0 z-50 h-full w-full max-w-3xl border-l border-white/10 bg-black/80 backdrop-blur-2xl shadow-2xl flex flex-col"
+            className="fixed right-0 top-0 h-full w-full max-w-3xl border-l border-white/10 bg-black/80 backdrop-blur-2xl shadow-2xl flex flex-col"
+            style={{ zIndex: 1000 }}
           >
             <div className="flex items-center justify-between border-b border-white/10 p-4">
               <div className="flex items-center gap-2 font-semibold text-white">

@@ -395,25 +395,6 @@ export default function JilingPage() {
 
   const isHydratedRef = useRef(false);
 
-  // Load persistence on mount
-  useEffect(() => {
-    const savedVoice = localStorage.getItem("jiling_voice");
-    const savedProvider = localStorage.getItem("jiling_provider");
-    if (savedVoice) setSelectedVoice(savedVoice);
-    if (savedProvider) setSelectedProviderId(savedProvider);
-    isHydratedRef.current = true;
-  }, []);
-
-  // Save changes after hydration
-  useEffect(() => {
-    if (!isHydratedRef.current) return;
-    localStorage.setItem("jiling_voice", selectedVoice);
-  }, [selectedVoice]);
-
-  useEffect(() => {
-    if (!isHydratedRef.current) return;
-    localStorage.setItem("jiling_provider", selectedProviderId);
-  }, [selectedProviderId]);
   const [focusMode, setFocusMode] = useState(true);
   const [showLogs, setShowLogs] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "info" | "error" } | null>(null);
@@ -472,10 +453,56 @@ export default function JilingPage() {
   const videoStreamRef = useRef<MediaStream | null>(null);
   const captureTimerRef = useRef<number | null>(null);
 
+  // Auto-scroll logs
+  useEffect(() => {
+    if (showLogs) {
+      logEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [logs, showLogs]);
+
   // Reset busy state on mount to prevent stale locks from HMR
   useEffect(() => {
     setIsBusy(false);
     startingRef.current = false;
+  }, []);
+
+  // Load persistence on mount
+  useEffect(() => {
+    const savedVoice = localStorage.getItem("jiling_voice");
+    const savedProvider = localStorage.getItem("jiling_provider");
+    const savedLogs = localStorage.getItem("jiling_show_logs");
+    if (savedVoice) setSelectedVoice(savedVoice);
+    if (savedProvider) setSelectedProviderId(savedProvider);
+    if (savedLogs === "true") setShowLogs(true);
+    isHydratedRef.current = true;
+  }, []);
+
+  // Save changes after hydration
+  useEffect(() => {
+    if (!isHydratedRef.current) return;
+    localStorage.setItem("jiling_voice", selectedVoice);
+  }, [selectedVoice]);
+
+  useEffect(() => {
+    if (!isHydratedRef.current) return;
+    localStorage.setItem("jiling_provider", selectedProviderId);
+  }, [selectedProviderId]);
+
+  useEffect(() => {
+    if (!isHydratedRef.current) return;
+    localStorage.setItem("jiling_show_logs", String(showLogs));
+  }, [showLogs]);
+
+  // Global hotkeys
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "l") {
+        e.preventDefault();
+        setShowLogs(prev => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
   const stopVideoStream = () => {
@@ -1379,7 +1406,7 @@ export default function JilingPage() {
       </div>
 
 
-      <header data-tauri-drag-region className="relative z-50 flex items-center justify-between px-8 pt-10 pb-6 select-none">
+      <header data-tauri-drag-region className="relative flex items-center justify-between px-8 pt-10 pb-6 select-none" style={{ zIndex: 500 }}>
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
             <label className="relative">
@@ -1484,6 +1511,19 @@ export default function JilingPage() {
           </Button>
 
           <Button
+            variant={showLogs ? "default" : "ghost"}
+            size="icon"
+            onClick={() => setShowLogs(!showLogs)}
+            className={`h-10 w-10 rounded-full border backdrop-blur-md transition-all duration-300 ${
+              showLogs 
+                ? "bg-white! text-black! border-white shadow-[0_0_20px_rgba(255,255,255,0.3)] scale-110" 
+                : "bg-white/5 text-white/60 border-white/10 hover:bg-white/10 hover:text-white"
+            }`}
+          >
+            <Terminal className="h-5 w-5" />
+          </Button>
+
+          <Button
             variant="ghost"
             size="icon"
             onClick={() => setShowSettings(true)}
@@ -1536,6 +1576,7 @@ export default function JilingPage() {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
               className="glass-panel w-full max-w-md rounded-3xl p-8"
+              style={{ zIndex: 800 }}
             >
               <div className="mb-6 flex items-center justify-between">
                 <h2 className="text-xl font-bold">应用设置</h2>
@@ -1580,18 +1621,51 @@ export default function JilingPage() {
         )}
       </AnimatePresence>
 
-      {/* Hidden Log Area */}
-      {showLogs && (
-        <div className="fixed left-8 top-24 bottom-24 z-30 w-64 glass-panel rounded-2xl p-4 overflow-hidden flex flex-col">
-          <h3 className="text-xs font-bold text-white/40 uppercase tracking-widest mb-2">系统日志</h3>
-          <ScrollArea className="flex-1 pr-2">
-            <div className="space-y-1 text-[10px] font-mono text-white/60">
-              {logs.map((log, i) => <div key={i} className="leading-tight">{log}</div>)}
-              <div ref={logEndRef} />
+      {/* Progressive Log Area */}
+      <AnimatePresence>
+        {showLogs && (
+          <motion.div 
+            initial={{ opacity: 0, x: 50 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 50 }}
+            className="fixed glass-panel rounded-3xl p-6 overflow-hidden flex flex-col shadow-2xl backdrop-blur-3xl border-white/20"
+            style={{ 
+              width: 'min(550px, 90vw)', 
+              height: 'min(700px, 75vh)', 
+              right: 'max(16px, 2vw)', 
+              top: '128px',
+              zIndex: 2000 
+            }}
+          >
+            <div className="flex items-center justify-between mb-4 pb-2 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <Terminal className="h-4 w-4 text-white" />
+                <h3 className="text-[11px] font-bold text-white uppercase tracking-wider">系统调试控制台</h3>
+              </div>
+              <div className="flex items-center gap-4">
+                <button 
+                  onClick={() => setShowLogs(false)}
+                  className="text-white/40 hover:text-white transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
-          </ScrollArea>
-        </div>
-      )}
+
+            <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+              <div className="space-y-0.5 font-mono leading-tight">
+                {logs.map((log, i) => (
+                  <div key={i} className="flex gap-2 group border-b border-white/5 py-0.5 last:border-0 hover:bg-white/5 transition-colors">
+                    <span className="text-[9px] text-white/10 select-none w-6 shrink-0 text-right">{i + 1}</span>
+                    <span className="text-[10px] text-white/80 group-hover:text-white break-all whitespace-pre-wrap">{log}</span>
+                  </div>
+                ))}
+                <div ref={logEndRef} />
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {/* Smart Positioning Status Overlay - TOP LAYER */}
       <div className={`pointer-events-none fixed z-200 transition-all duration-500 ${
         (isSharing || isTaskPinned || isVideoOn) 
