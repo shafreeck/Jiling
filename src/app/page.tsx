@@ -1863,7 +1863,7 @@ Note: If you output A2UI, return ONLY the JSON without any other text.`;
                 }`}
               title={enableA2UI ? "已启用 A2UI 卡片" : "已禁用 A2UI 卡片"}
             >
-              <AppWindow className="h-5 w-5" />
+              <Sparkles className="h-5 w-5" />
             </Button>
           </div>
         </header>
