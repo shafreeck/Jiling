@@ -49,7 +49,7 @@ const extractA2UIPayload = (sectionText: string): any => {
 
 export const AuraRenderer = ({ content, onAction, latestOnly = false }: AuraRendererProps) => {
 
-    const allSections = content.split('\n\n---\n\n').map(s => s.trim()).filter(Boolean);
+    const allSections = content.split('\n\n___JILING_STEP_SEPARATOR___\n\n').map(s => s.trim()).filter(Boolean);
     const sectionsToRender = latestOnly ? [allSections[allSections.length - 1] || ''] : allSections;
 
     return (

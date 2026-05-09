@@ -338,7 +338,7 @@ async fn acp_loop(
                         if stream == "assistant" {
                             if let Some(text) = payload["data"]["text"].as_str() {
                                 let base = base_outputs.get(&original_run_id).cloned().unwrap_or_default();
-                                let separator = if base.is_empty() { "" } else { "\n\n---\n\n" };
+                                let separator = if base.is_empty() { "" } else { "\n\n___JILING_STEP_SEPARATOR___\n\n" };
                                 let combined = format!("{}{}{}", base, separator, text);
 
                                 let _ = db_lock.set_task_output(&mapped_run_id, &combined);

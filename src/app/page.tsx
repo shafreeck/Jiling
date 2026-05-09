@@ -1322,7 +1322,7 @@ Output format: { "type": "a2ui", "requestId": "unique_id", "payload": { "compone
       const status = action === "approve" ? "approved" :
         action === "reject" ? "rejected" : "dismissed";
 
-      const sections = updatedOutput.split('\n\n---\n\n');
+      const sections = updatedOutput.split('\n\n___JILING_STEP_SEPARATOR___\n\n');
       const lastSectionIdx = sections.length - 1;
       let targetSection = sections[lastSectionIdx];
 
@@ -1368,7 +1368,7 @@ Output format: { "type": "a2ui", "requestId": "unique_id", "payload": { "compone
               const newJson = JSON.stringify(payload, null, 2);
               targetSection = targetSection.substring(0, objectStart) + newJson + targetSection.substring(objectEnd);
               sections[lastSectionIdx] = targetSection;
-              updatedOutput = sections.join('\n\n---\n\n');
+              updatedOutput = sections.join('\n\n___JILING_STEP_SEPARATOR___\n\n');
               patched = true;
               break; // Found and patched the block
             }
@@ -1383,7 +1383,7 @@ Output format: { "type": "a2ui", "requestId": "unique_id", "payload": { "compone
         // We append a hidden HTML comment to persist the status, which `activeA2UITask` will detect.
         targetSection += `\n\n<!-- "status": "${status}" -->`;
         sections[lastSectionIdx] = targetSection;
-        updatedOutput = sections.join('\n\n---\n\n');
+        updatedOutput = sections.join('\n\n___JILING_STEP_SEPARATOR___\n\n');
       }
 
       // 2. Update local state
@@ -1469,7 +1469,7 @@ Output format: { "type": "a2ui", "requestId": "unique_id", "payload": { "compone
         if (t.phase !== "running" && t.phase !== "submitted" && t.phase !== "completed") return false;
         if (!t.output) return false;
         if (dismissedA2UIs.get(t.runId) === t.output) return false;
-        const sections = t.output.split('\n\n---\n\n');
+        const sections = t.output.split('\n\n___JILING_STEP_SEPARATOR___\n\n');
         const lastSection = sections[sections.length - 1].trim();
         
         // Simple check for A2UI JSON structure in the LAST section only
