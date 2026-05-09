@@ -120,12 +120,28 @@ export class AcpProviderAdapter implements AgentProviderAdapter {
   async submitTask(task: JilingTaskEnvelope): Promise<AgentTaskRef> {
     // Currently, our ACP backend expects `agent` and `task`
     // We pass `main` as the default agent for now, or read from config
+    
+    const a2uiDocs = `
+## A2UI Capabilities
+You can use rich UI cards in your responses. To use a card, output a JSON object with the following format in your response (either as the root object or inside a \`\`\`json code block):
+{ "type": "a2ui", "requestId": "unique_id", "payload": { "component": "ComponentName", "props": {...} } }
+
+Available Components:
+- "ApprovalCard": For task approvals or confirmations. Props: { "title": string, "description": string, "severity": "info"|"warning"|"critical", "actionLabel": string }. Note: "description" supports Markdown (tables, formatting).
+- "CodeReviewCard": For code reviews. Props: { "files": Array<{ "filename": string, "content": string, "language": string }> }
+- "NoteCard": For displaying markdown notes or summaries. Props: { "content": string }
+- "ChartCard": For displaying charts. Props: { "title": string, "type": "line"|"bar", "data": Array<{ "label": string, "value": number }>, "color"?: string }
+- "TaskListCard": For displaying lists of tasks. Props: { "title": string, "tasks": Array<{ "id": string, "title": string, "completed": boolean, "description"?: string, "cancelled"?: boolean }> }
+`;
+
+    const systemInstruction = `${task.identity.runtimeRoleDescription || ""}\n\n${a2uiDocs}`;
+
     const runId = await invoke<string>("execute_agent_acp_task", {
       providerId: this.id,
       providerDir: this.dotDir,
       agent: "main",
       task: task.userRequest,
-      systemInstruction: task.identity.runtimeRoleDescription,
+      systemInstruction: systemInstruction,
     });
 
     return { runId, providerId: this.id };
