@@ -4,6 +4,7 @@ import CodeReviewCard from './CodeReviewCard';
 import ApprovalCard from './ApprovalCard';
 import ChartCard from './ChartCard';
 import TaskListCard from './TaskListCard';
+import CanvasCard from './CanvasCard';
 
 const Registry: Record<string, React.ComponentType<any>> = {
     'NoteCard': NoteCard,
@@ -11,6 +12,7 @@ const Registry: Record<string, React.ComponentType<any>> = {
     'ApprovalCard': ApprovalCard,
     'ChartCard': ChartCard,
     'TaskListCard': TaskListCard,
+    'CanvasCard': CanvasCard,
 };
 
 export const getComponent = (name: string) => {
