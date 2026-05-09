@@ -37,7 +37,7 @@ const CanvasCard = ({ nodes, links }: CanvasCardProps) => {
             textStyle: { color: '#fff', fontSize: 12 },
             formatter: (params: any) => {
                 if (params.dataType === 'node') {
-                    return `${params.data.label} <span style="color: ${getStatusColor(params.data.status)}">(${params.data.status})</span>`;
+                    return `${params.data.nodeLabel} <span style="color: ${getStatusColor(params.data.status)}">(${params.data.status})</span>`;
                 }
                 return params.data.label || 'Connection';
             }
@@ -49,9 +49,9 @@ const CanvasCard = ({ nodes, links }: CanvasCardProps) => {
                 type: 'graph',
                 layout: 'force',
                 force: {
-                    repulsion: 500,
-                    edgeLength: 120,
-                    gravity: 0.1,
+                    repulsion: 300,
+                    edgeLength: 80,
+                    gravity: 0.2,
                     friction: 0.6
                 },
                 roam: true, // Allow zoom and pan
@@ -66,7 +66,7 @@ const CanvasCard = ({ nodes, links }: CanvasCardProps) => {
                 data: nodes.map(node => ({
                     id: node.id,
                     name: node.id, // Used for linking
-                    label: node.label, // Custom field for display
+                    nodeLabel: node.label, // Custom field for display (renamed to avoid conflict)
                     status: node.status,
                     symbolSize: node.size === 'large' ? 45 : node.size === 'medium' ? 30 : 15,
                     itemStyle: {
