@@ -175,9 +175,10 @@ async fn acp_loop(
                         });
                         let _ = ws_write.send(Message::Text(msg.to_string())).await;
                     }
-                    AcpCommand::AbortTask { run_id } => {
+                     AcpCommand::AbortTask { run_id } => {
+                        println!("[ACP] Sending abort request for run_id: {}", run_id);
                         let msg = json!({
-                            "type": "req", "method": "sessions.abort", "id": format!("abort-{}", timestamp_ns()),
+                            "type": "req", "method": "agent.abort", "id": format!("abort-{}", timestamp_ns()),
                             "params": { "runId": run_id }
                         });
                         let _ = ws_write.send(Message::Text(msg.to_string())).await;
