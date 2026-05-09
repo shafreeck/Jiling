@@ -12,7 +12,8 @@ const NoteCard = ({ content }: { content: string }) => {
                     h1: ({ node, ...props }) => <h1 className="text-xl font-bold text-white mt-6 mb-3 tracking-tight" {...props} />,
                     h2: ({ node, ...props }) => <h2 className="text-lg font-bold text-white mt-5 mb-2.5 tracking-tight" {...props} />,
                     h3: ({ node, ...props }) => <h3 className="text-base font-bold text-white mt-4 mb-2 tracking-tight" {...props} />,
-                    p: ({ node, ...props }) => <div className="text-[13px] leading-6 text-white/90 my-3 wrap-break-word" {...props} />,
+                    h4: ({ node, ...props }) => <h4 className="text-sm font-bold text-white mt-3 mb-1.5 tracking-tight" {...props} />,
+                    p: ({ node, ...props }) => <div className="text-[13px] leading-6 my-3 wrap-break-word" style={{ color: 'rgba(255,255,255,0.9)' }} {...props} />,
                     strong: ({ node, ...props }) => <strong className="font-bold text-white" {...props} />,
                     em: ({ node, ...props }) => <em className="italic text-white/70" {...props} />,
                     ul: ({ node, ...props }) => <ul className="list-disc pl-5 my-3 space-y-1.5" {...props} />,
@@ -26,7 +27,7 @@ const NoteCard = ({ content }: { content: string }) => {
                             const filteredChildren = children.filter((child: any) => !(child.type === 'input' && child.props.type === 'checkbox'));
                             
                             return (
-                                <li className="text-[13px] flex items-start gap-2 my-1.5 list-none -ml-5" style={{ color: isChecked ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.9)' }}>
+                                <li className="text-[13px] flex items-start gap-2 my-1.5 list-none -ml-5" style={{ color: isChecked ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.9)' }}>
                                     <span className={isChecked ? "text-emerald-500 mt-0.5" : "text-white/30 mt-0.5"}>
                                         {isChecked ? <CheckSquare size={15} /> : <Square size={15} />}
                                     </span>
