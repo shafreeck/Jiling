@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import ReactECharts from 'echarts-for-react';
 
 interface Node {
@@ -19,6 +20,24 @@ interface CanvasCardProps {
 }
 
 const CanvasCard = ({ nodes, links }: CanvasCardProps) => {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const echartsRef = useRef<any>(null);
+
+    useEffect(() => {
+        if (!containerRef.current) return;
+
+        // 使用 ResizeObserver 监听容器大小变化
+        // 解决 ECharts 在模态框等动态布局中初始化时宽度为 0 导致偏向左侧的问题
+        const resizeObserver = new ResizeObserver(() => {
+            if (echartsRef.current) {
+                echartsRef.current.getEchartsInstance().resize();
+            }
+        });
+
+        resizeObserver.observe(containerRef.current);
+        return () => resizeObserver.disconnect();
+    }, []);
+
     // Convert status to color
     const getStatusColor = (status: string, alpha: number = 1) => {
         if (status === 'success') return `rgba(16, 185, 129, ${alpha})`;
@@ -66,7 +85,7 @@ const CanvasCard = ({ nodes, links }: CanvasCardProps) => {
                 data: nodes.map(node => ({
                     id: node.id,
                     name: node.id, // Used for linking
-                    nodeLabel: node.label, // Custom field for display (renamed to avoid conflict)
+                    nodeLabel: node.label, // Custom field for display
                     status: node.status,
                     symbolSize: node.size === 'large' ? 45 : node.size === 'medium' ? 30 : 15,
                     itemStyle: {
@@ -112,12 +131,14 @@ const CanvasCard = ({ nodes, links }: CanvasCardProps) => {
 
     return (
         <div
+            ref={containerRef}
             className="w-full bg-[#19191e]/40 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden my-4"
             style={{ height: '320px' }}
             onClick={e => e.stopPropagation()}
             onMouseDown={e => e.stopPropagation()}
         >
             <ReactECharts 
+                ref={echartsRef}
                 option={option} 
                 style={{ height: '100%', width: '100%' }}
             />
