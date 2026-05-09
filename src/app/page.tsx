@@ -1406,7 +1406,7 @@ export default function JilingPage() {
       </div>
 
 
-      <header data-tauri-drag-region className="relative flex items-center justify-between px-8 pt-10 pb-6 select-none" style={{ zIndex: 500 }}>
+      <header data-tauri-drag-region className="relative flex items-center justify-between px-8 pt-10 pb-6 select-none" style={{ zIndex: 600 }}>
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
             <label className="relative">
@@ -1415,7 +1415,7 @@ export default function JilingPage() {
                 disabled={isBusy || isConnected}
                 value={selectedVoice}
                 onChange={(e) => setSelectedVoice(e.target.value)}
-                className="h-9 w-36 appearance-none rounded-full border border-white/10 bg-white/5 pl-9 pr-8 text-xs text-white/60 outline-none backdrop-blur-xl transition hover:bg-white/10 focus:border-primary/50 disabled:opacity-50"
+                className="h-9 w-36 appearance-none rounded-full border border-white/10 bg-white/5 pl-9 pr-8 text-xs text-white/60 outline-none backdrop-blur-xl transition hover:bg-white/10 focus:border-primary/50 disabled:opacity-50 [app-region:no-drag]"
               >
                 {VOICES.map(v => <option key={v.id} value={v.id} className="bg-[#1a1a1a] font-sans">{v.name}</option>)}
               </select>
@@ -1430,7 +1430,7 @@ export default function JilingPage() {
                     disabled={isBusy || isConnected}
                     value={selectedProviderId}
                     onChange={(e) => setSelectedProviderId(e.target.value)}
-                    className="h-9 w-32 appearance-none rounded-full border border-white/10 bg-white/5 pl-9 pr-8 text-xs text-white/60 outline-none backdrop-blur-xl transition hover:bg-white/10 focus:border-primary/50 disabled:opacity-50"
+                    className="h-9 w-32 appearance-none rounded-full border border-white/10 bg-white/5 pl-9 pr-8 text-xs text-white/60 outline-none backdrop-blur-xl transition hover:bg-white/10 focus:border-primary/50 disabled:opacity-50 [app-region:no-drag]"
                   >
                     {providers.map(p => <option key={p.id} value={p.id} className="bg-[#1a1a1a]">{providerLabel(p.id, p.name)}</option>)}
                   </select>
@@ -1446,7 +1446,7 @@ export default function JilingPage() {
                           size="icon"
                           disabled={isBusy || isConnected}
                           onClick={clearSessionHandle}
-                          className="h-9 w-9 rounded-full bg-white/5 text-white/30 hover:bg-destructive/10 hover:text-destructive transition-colors"
+                          className="h-9 w-9 rounded-full bg-white/5 text-white/30 hover:bg-destructive/10 hover:text-destructive transition-colors [app-region:no-drag]"
                         >
                           <Eraser className="h-3.5 w-3.5" />
                         </Button>
@@ -1514,7 +1514,7 @@ export default function JilingPage() {
             variant={showLogs ? "default" : "ghost"}
             size="icon"
             onClick={() => setShowLogs(!showLogs)}
-            className={`h-10 w-10 rounded-full border backdrop-blur-md transition-all duration-300 ${
+            className={`h-10 w-10 rounded-full border backdrop-blur-md transition-all duration-300 [app-region:no-drag] ${
               showLogs 
                 ? "bg-white! text-black! border-white shadow-[0_0_20px_rgba(255,255,255,0.3)] scale-110" 
                 : "bg-white/5 text-white/60 border-white/10 hover:bg-white/10 hover:text-white"
@@ -1527,7 +1527,7 @@ export default function JilingPage() {
             variant="ghost"
             size="icon"
             onClick={() => setShowSettings(true)}
-            className="h-10 w-10 rounded-full border border-white/10 bg-white/5 backdrop-blur-md text-white/60 hover:bg-white/10 hover:text-white transition-all"
+            className="h-10 w-10 rounded-full border border-white/10 bg-white/5 backdrop-blur-md text-white/60 hover:bg-white/10 hover:text-white transition-all [app-region:no-drag]"
           >
             <KeyRound className="h-5 w-5" />
           </Button>
