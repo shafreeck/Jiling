@@ -162,7 +162,7 @@ mod tests {
         let db = Db::new_with_path(&db_path).unwrap();
 
         // Test Insert
-        db.insert_task("run-1", "main", "Hello").unwrap();
+        db.insert_task("run-1", "openclaw", "main", "Hello").unwrap();
         let tasks = db.get_in_progress_tasks().unwrap();
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].0, "run-1");
