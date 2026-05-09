@@ -79,7 +79,20 @@ const NoteCard = ({ content }: { content: string }) => {
                         }
                         return <input {...props} />;
                     },
-                    a: ({node, ...props}) => <a className="text-emerald-400 hover:text-emerald-300 underline" {...props} />,
+                    a: ({node, ...props}) => (
+                        <a 
+                            className="text-emerald-400 hover:text-emerald-300 underline cursor-pointer" 
+                            onClick={(e) => {
+                                e.preventDefault();
+                                if (props.href) {
+                                    import('@tauri-apps/plugin-shell').then(({ open }) => {
+                                        open(props.href).catch(console.error);
+                                    }).catch(console.error);
+                                }
+                            }}
+                            {...props} 
+                        />
+                    ),
                     hr: ({node, ...props}) => <hr className="border-white/10 my-4" {...props} />,
                     del: ({node, ...props}) => <del className="line-through text-white/40" {...props} />,
                 }}
