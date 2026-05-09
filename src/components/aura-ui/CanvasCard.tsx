@@ -82,6 +82,17 @@ const CanvasCard = ({ nodes, links }: CanvasCardProps) => {
                         color: 'rgba(255, 255, 255, 0.5)'
                     }
                 },
+                blur: {
+                    itemStyle: {
+                        opacity: 0.4
+                    },
+                    label: {
+                        opacity: 0.4
+                    },
+                    lineStyle: {
+                        opacity: 0.2
+                    }
+                },
                 data: nodes.map(node => ({
                     id: node.id,
                     name: node.id, // Used for linking
