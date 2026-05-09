@@ -1939,7 +1939,7 @@ Note: If you output A2UI, return ONLY the JSON without any other text.`;
             >
               <div className="mb-6 flex items-center justify-between">
                 <h2 className="text-xl font-bold text-white">应用设置</h2>
-                <Button variant="ghost" size="icon" onClick={() => setShowSettings(false)} className="rounded-full">
+                <Button variant="ghost" size="icon" onClick={() => setShowSettings(false)} className="rounded-full text-white/60 hover:text-white hover:bg-white/10 transition-colors">
                   <X className="h-5 w-5" />
                 </Button>
               </div>
