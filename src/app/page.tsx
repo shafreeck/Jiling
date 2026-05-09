@@ -1319,9 +1319,9 @@ Output format: { "type": "a2ui", "requestId": "unique_id", "payload": { "compone
     try {
       // 1. Update the output string to persist the state using a robust scanner
       let updatedOutput: string = task.output;
-      const status = action === "approve" ? "approved" : 
-                     action === "reject" ? "rejected" : "dismissed";
-      
+      const status = action === "approve" ? "approved" :
+        action === "reject" ? "rejected" : "dismissed";
+
       // Robust scanning for JSON blocks
       let startIndex = 0;
       while (true) {
@@ -1359,7 +1359,7 @@ Output format: { "type": "a2ui", "requestId": "unique_id", "payload": { "compone
               } else {
                 payload.payload.status = status;
               }
-              
+
               const newJson = JSON.stringify(payload, null, 2);
               updatedOutput = updatedOutput.substring(0, objectStart) + newJson + updatedOutput.substring(objectEnd);
               break; // Found and patched the block
@@ -1371,22 +1371,27 @@ Output format: { "type": "a2ui", "requestId": "unique_id", "payload": { "compone
       }
 
       // 2. Update local state
-      setAgentTasks(prev => prev.map(t => 
+      setAgentTasks(prev => prev.map(t =>
         t.runId === runId ? { ...t, output: updatedOutput } : t
       ));
 
       // 3. Persistent to DB
       await invoke("update_agent_task_output", { runId, output: updatedOutput });
-      
+
       // 4. Send feedback to Agent
       // We try to extract requestId from the data or props
-      const requestId = data?.requestId || "default"; 
+      const requestId = data?.requestId || "default";
       const agentId = task.providerName || "main";
 
       const adapter = providers.find(p => p.id === selectedProviderId)?.adapter;
-      
+
       if (!adapter) {
         throw new Error(`找不到对应的 Provider: ${selectedProviderId}`);
+      }
+
+      if (action === "dismiss") {
+        addLog(`[A2UI] 忽略单纯的 dismiss 动作 (requestId: ${requestId})`);
+        return;
       }
 
       const feedbackData = {
@@ -1396,60 +1401,20 @@ Output format: { "type": "a2ui", "requestId": "unique_id", "payload": { "compone
         data: data || {}
       };
 
-      const message = `[A2UI 交互反馈] 这是对先前任务的审批结果，请根据此结果继续执行：\n\n${JSON.stringify(feedbackData)}`;
+      const message = `[A2UI Feedback] This is the approval result for the previous task, please continue execution based on this result:\n\n${JSON.stringify(feedbackData)}\n\nIMPORTANT: You MUST wrap any further A2UI output strictly in \`\`\`json blocks!`;
 
-      // 直接把反馈作为新任务下发
-      const taskRef = await adapter.submitTask({
-        identity: {
-          systemName: "机灵",
-          runtimeRoleDescription: "请接收 A2UI 审批结果并完成后续工作。",
-          mode: "background_core",
-          userFacingRole: "same_assistant"
-        },
-        userRequest: message,
-        conversationContext: { recentUserIntent: "处理审批反馈", locale: "zh-CN" },
-        executionPolicy: { askBeforeRiskyChanges: true, preferConciseProgress: false, produceSpeakableSummary: true },
-        outputContract: { format: "markdown_with_titles", requireSpeakableSummary: true, requireSpokenReport: true },
+      // 将原任务重新置为 running 状态，视觉上继续执行
+      updateTask(runId, { phase: "running" });
+
+      await invoke("respond_agent_task_action", {
+        agentId: task.providerName,
+        runId,
+        requestId,
+        action,
+        data: feedbackData
       });
 
-      // 1. 将新任务加入前端 UI 列表
-      upsertTask({
-        runId: taskRef.runId,
-        title: `[审批反馈] ${task.title || "原任务"}`,
-        providerName: task.providerName,
-        phase: "submitted",
-        startedAt: Date.now(),
-        updatedAt: Date.now(),
-        progress: [],
-      });
-      setIsSidePanelOpen(true);
-
-      // 2. 建立长连接监听
-      void adapter.subscribeTask(taskRef, {
-        onProgress: (e) => {
-          addLog(`[代理] ${e.text}`);
-          appendTaskProgress(taskRef.runId, e.text);
-        },
-        onCompleted: (e) => {
-          const outputText = formatTaskOutput(e.output);
-          updateTask(taskRef.runId, {
-            phase: "completed",
-            output: outputText,
-          });
-          clientRef.current?.sendSystemUpdate(
-            `A2UI反馈任务执行完毕。runId: ${taskRef.runId}\n\n执行结果：\n${outputText}`
-          );
-        },
-        onFailed: (e) => {
-          addLog(`[任务] 失败: ${e.error}`);
-          updateTask(taskRef.runId, { phase: "failed", error: e.error });
-        },
-        onCancelled: (e) => {
-          updateTask(taskRef.runId, { phase: "cancelled", error: e.reason });
-        },
-      });
-
-      addLog(`[A2UI] 已作为新任务下发并监听: ${action === "approve" ? "允许" : "拒绝"} (新Task: ${taskRef.runId})`);
+      addLog(`[A2UI] 审批结果已沿用原链路下发: ${action === "approve" ? "允许" : "拒绝"} (Task: ${runId})`);
     } catch (error: unknown) {
       addLog(`[A2UI] 操作处理失败: ${errorMessage(error)}`);
     }
@@ -1477,9 +1442,9 @@ Output format: { "type": "a2ui", "requestId": "unique_id", "payload": { "compone
           "正在回答";
 
   const runningTasks = agentTasks.filter((task) => task.phase === "submitted" || task.phase === "running");
-  
+
   // Detect if any task has an active A2UI payload that needs attention
-  const [dismissedA2UIIds, setDismissedA2UIIds] = useState<Set<string>>(new Set());
+  const [dismissedA2UIs, setDismissedA2UIs] = useState<Map<string, string>>(new Map());
   const activeA2UITask = useMemo(() => {
     // Find the most recent task that has an A2UI payload in its output
     const a2uiTask = [...agentTasks]
@@ -1487,19 +1452,19 @@ Output format: { "type": "a2ui", "requestId": "unique_id", "payload": { "compone
       .find(t => {
         if (t.phase !== "running" && t.phase !== "submitted" && t.phase !== "completed") return false;
         if (!t.output) return false;
-        if (dismissedA2UIIds.has(t.runId)) return false;
+        if (dismissedA2UIs.get(t.runId) === t.output) return false;
         // Simple check for A2UI JSON structure
         const hasA2UI = t.output.includes('"type": "a2ui"') && t.output.includes('"payload"');
         if (!hasA2UI) return false;
-        
+
         // If it's already approved, rejected or dismissed, don't show the popup
-        const isHandled = t.output.includes('"status": "approved"') || 
-                         t.output.includes('"status": "rejected"') ||
-                         t.output.includes('"status": "dismissed"');
+        const isHandled = t.output.includes('"status": "approved"') ||
+          t.output.includes('"status": "rejected"') ||
+          t.output.includes('"status": "dismissed"');
         return !isHandled;
       });
     return a2uiTask;
-  }, [agentTasks, dismissedA2UIIds]);
+  }, [agentTasks, dismissedA2UIs]);
 
   const readingModeContent = (isTaskPinned && !isSharing && !isVideoOn) ? (
     <div className="flex h-full w-full flex-col overflow-hidden bg-black selection:bg-blue-600/40">
@@ -1546,8 +1511,8 @@ Output format: { "type": "a2ui", "requestId": "unique_id", "payload": { "compone
 
                   <div className="mt-4 flex items-center gap-3">
                     <div className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${activeTask.phase === "completed" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" :
-                        activeTask.phase === "running" ? "bg-primary/10 text-primary border border-primary/20 animate-pulse" :
-                          "bg-white/5 text-white/40 border border-white/10"
+                      activeTask.phase === "running" ? "bg-primary/10 text-primary border border-primary/20 animate-pulse" :
+                        "bg-white/5 text-white/40 border border-white/10"
                       }`}>
                       {activeTask.phase === "completed" ? "已完成" : activeTask.phase === "running" ? "正在执行" : "等待中"}
                     </div>
@@ -1560,25 +1525,24 @@ Output format: { "type": "a2ui", "requestId": "unique_id", "payload": { "compone
                 {/* Output Content */}
                 {activeTask.output ? (
                   <div className="w-full max-w-none wrap-break-word overflow-x-hidden font-sans">
-                    <AuraRenderer 
-                      content={activeTask.output} 
+                    <AuraRenderer
+                      content={activeTask.output}
                       onAction={(action, data) => handleTaskA2UIAction(activeTask.runId, action, data)}
                     />
                   </div>
                 ) : (activeTask.error || activeTask.phase === "cancelled" || activeTask.phase === "lost") ? (
-                  <div className={`rounded-lg p-6 border ${
-                    activeTask.phase === "cancelled" 
-                      ? "bg-orange-500/10 text-orange-400 border-orange-500/20" 
+                  <div className={`rounded-lg p-6 border ${activeTask.phase === "cancelled"
+                      ? "bg-orange-500/10 text-orange-400 border-orange-500/20"
                       : activeTask.phase === "lost"
-                      ? "bg-white/5 text-white/40 border-white/10"
-                      : "bg-destructive/10 text-destructive border-destructive/20"
-                  }`}>
+                        ? "bg-white/5 text-white/40 border-white/10"
+                        : "bg-destructive/10 text-destructive border-destructive/20"
+                    }`}>
                     <div className="flex items-center gap-3 font-bold mb-2">
                       {activeTask.phase === "lost" ? <HistoryIcon className="h-5 w-5" /> : <XCircle className="h-5 w-5" />}
                       <span>{
-                        activeTask.phase === "cancelled" ? "任务已终止" : 
-                        activeTask.phase === "lost" ? "任务状态丢失" :
-                        "执行失败"
+                        activeTask.phase === "cancelled" ? "任务已终止" :
+                          activeTask.phase === "lost" ? "任务状态丢失" :
+                            "执行失败"
                       }</span>
                     </div>
                     <p className="opacity-90">
@@ -1666,8 +1630,8 @@ Output format: { "type": "a2ui", "requestId": "unique_id", "payload": { "compone
               animate={{ y: 20, opacity: 1, x: "-50%" }}
               exit={{ y: -50, opacity: 0, x: "-50%" }}
               className={`fixed left-1/2 top-4 z-300 flex items-center gap-3 rounded-2xl border px-6 py-3 shadow-2xl backdrop-blur-xl ${toast.type === "error"
-                  ? "border-destructive/40 bg-destructive/10 text-destructive"
-                  : "border-white/10 bg-white/5 text-white"
+                ? "border-destructive/40 bg-destructive/10 text-destructive"
+                : "border-white/10 bg-white/5 text-white"
                 }`}
             >
               <div className={`h-2 w-2 rounded-full ${toast.type === "error" ? "bg-destructive animate-pulse" : "bg-primary animate-pulse"}`} />
@@ -1814,8 +1778,8 @@ Output format: { "type": "a2ui", "requestId": "unique_id", "payload": { "compone
                 setIsTaskPinned(!isTaskPinned);
               }}
               className={`relative h-10 w-10 rounded-full border border-white/10 backdrop-blur-md transition-all duration-500 ${isTaskPinned
-                  ? "bg-primary/20 text-primary border-primary/40 shadow-[0_0_15px_rgba(72,255,222,0.2)]"
-                  : "bg-white/5 text-white/60 hover:bg-white/10 hover:text-white"
+                ? "bg-primary/20 text-primary border-primary/40 shadow-[0_0_15px_rgba(72,255,222,0.2)]"
+                : "bg-white/5 text-white/60 hover:bg-white/10 hover:text-white"
                 }`}
             >
               <AppWindow className="h-5 w-5" />
@@ -1846,8 +1810,8 @@ Output format: { "type": "a2ui", "requestId": "unique_id", "payload": { "compone
               size="icon"
               onClick={() => setShowLogs(!showLogs)}
               className={`h-10 w-10 rounded-full border backdrop-blur-md transition-all duration-300 [app-region:no-drag] ${showLogs
-                  ? "bg-white! text-black! border-white shadow-[0_0_20px_rgba(255,255,255,0.3)] scale-110"
-                  : "bg-white/5 text-white/60 border-white/10 hover:bg-white/10 hover:text-white"
+                ? "bg-white! text-black! border-white shadow-[0_0_20px_rgba(255,255,255,0.3)] scale-110"
+                : "bg-white/5 text-white/60 border-white/10 hover:bg-white/10 hover:text-white"
                 }`}
             >
               <Terminal className="h-5 w-5" />
@@ -1902,8 +1866,8 @@ Output format: { "type": "a2ui", "requestId": "unique_id", "payload": { "compone
       />
 
       <div className={`pointer-events-none fixed z-200 transition-all duration-500 ${(isSharing || isTaskPinned || isVideoOn)
-          ? "bottom-24 right-8 w-full max-w-sm"
-          : "bottom-24 left-1/2 w-full max-w-4xl -translate-x-1/2 px-8"
+        ? "bottom-24 right-8 w-full max-w-sm"
+        : "bottom-24 left-1/2 w-full max-w-4xl -translate-x-1/2 px-8"
         }`}>
         <TranscriptOverlay
           messages={transcript}
@@ -2035,7 +1999,7 @@ Output format: { "type": "a2ui", "requestId": "unique_id", "payload": { "compone
                 // Optional: dismiss or do nothing
               }}
             />
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, y: -50, scale: 0.9 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -50, scale: 0.9 }}
@@ -2043,19 +2007,19 @@ Output format: { "type": "a2ui", "requestId": "unique_id", "payload": { "compone
             >
               <div className="relative group overflow-hidden rounded-3xl border border-white/10 bg-black/80 p-1 shadow-2xl backdrop-blur-2xl ring-1 ring-white/20">
                 <div className="absolute inset-0 bg-linear-to-b from-white/5 to-transparent pointer-events-none" />
-                
+
                 <div className="flex items-center justify-between px-4 py-2 border-b border-white/5 bg-white/2">
                   <div className="flex items-center gap-2">
                     <div className="h-2 w-2 rounded-full bg-orange-400 animate-pulse" />
                     <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">待处理交互请求</span>
                   </div>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     className="h-6 w-6 text-white/20 hover:text-white"
                     onClick={() => {
                       handleTaskA2UIAction(activeA2UITask.runId, "dismiss", {});
-                      setDismissedA2UIIds(prev => new Set(prev).add(activeA2UITask.runId));
+                      setDismissedA2UIs(prev => new Map(prev).set(activeA2UITask.runId, activeA2UITask.output!));
                     }}
                   >
                     <X className="h-3 w-3" />
@@ -2063,19 +2027,19 @@ Output format: { "type": "a2ui", "requestId": "unique_id", "payload": { "compone
                 </div>
 
                 <div className="max-h-[60vh] overflow-y-auto p-2 custom-scrollbar">
-                  <AuraRenderer 
-                    content={activeA2UITask.output!} 
+                  <AuraRenderer
+                    content={activeA2UITask.output!}
                     onAction={(action, data) => {
                       handleTaskA2UIAction(activeA2UITask.runId, action, data);
-                      setDismissedA2UIIds(prev => new Set(prev).add(activeA2UITask.runId));
+                      setDismissedA2UIs(prev => new Map(prev).set(activeA2UITask.runId, activeA2UITask.output!));
                     }}
                   />
                 </div>
 
                 <div className="p-3 bg-white/2 border-t border-white/5 flex items-center justify-between">
                   <span className="text-[10px] text-white/30 truncate max-w-[200px]">来自: {activeA2UITask.title}</span>
-                  <Button 
-                    variant="link" 
+                  <Button
+                    variant="link"
                     className="h-auto p-0 text-[10px] text-primary hover:text-primary/80"
                     onClick={() => {
                       setSelectedTaskId(activeA2UITask.runId);

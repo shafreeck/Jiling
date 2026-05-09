@@ -142,13 +142,7 @@ impl GlobalAcpManager {
         action: String,
         data: Value,
     ) -> Result<(), String> {
-        // Update DB to persist the handled state
-        {
-            let db = self.db.lock().await;
-            if let Ok(output) = db.get_task_output(&run_id) {
-                // Implementation omitted for brevity as per existing code
-            }
-        }
+
 
         // Send feedback to agent
         for entry in self.tx_map.iter() {
@@ -210,6 +204,9 @@ async fn acp_loop(
 
     let mut authenticated = false;
     let (device_id, device_token, signing_key) = load_identity(provider_dir)?;
+    
+    // Map dynamically generated AutoClaw runIds back to original Jiling runIds
+    let mut virtual_run_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
 
     loop {
         tokio::select! {
@@ -264,14 +261,15 @@ async fn acp_loop(
                             "data": data
                         });
 
-                        // Wrap in a human-readable prefix to ensure the Agent (LLM) recognizes the input
-                        let message = format!("User provided feedback via A2UI:\n\n{}", feedback_data.to_string());
+                        let message = format!("[A2UI Feedback] This is the approval result for the previous task, please continue execution based on this result:\n\n{}\n\nIMPORTANT: You MUST wrap any further A2UI output strictly in ```json blocks!", feedback_data.to_string());
 
+                        let req_id = format!("respond|{}|{}", run_id, timestamp_ns());
                         let idempotency_key = format!("jiling-{}", timestamp_ns());
+                        
+                        // Use "main" as the hardcoded agentId, just like runTask does
                         let mut params = json!({
-                            "runId": run_id,
                             "message": message,
-                            "agentId": agent_id,
+                            "agentId": "main",
                             "idempotencyKey": idempotency_key
                         });
                         
@@ -280,7 +278,7 @@ async fn acp_loop(
                         let msg = json!({
                             "type": "req", 
                             "method": "agent", 
-                            "id": format!("jiling-{}", timestamp_ns()),
+                            "id": req_id,
                             "params": params
                         });
                         
@@ -325,7 +323,15 @@ async fn acp_loop(
 
                     if v["event"] == "agent" {
                         let payload = &v["payload"];
-                        let run_id = payload["runId"].as_str().unwrap_or("");
+                        let mut run_id = payload["runId"].as_str().unwrap_or("").to_string();
+                        
+                        // Map the dynamically generated AutoClaw runId back to the original task
+                        if let Some(mapped_id) = virtual_run_map.get(&run_id) {
+                            run_id = mapped_id.clone();
+                        }
+                        
+                        let run_id = run_id.as_str();
+
                         let stream = payload["stream"].as_str().unwrap_or("");
 
                         let db_lock = db.lock().await;
@@ -346,6 +352,7 @@ async fn acp_loop(
                                     data["error"] = json!(message);
                                 }
                             }
+                            
                             let _ = db_lock.update_task_status(run_id, phase);
                              app_handle.emit("acp-event", AcpEvent {
                                 run_id: run_id.to_string(),
@@ -390,6 +397,15 @@ async fn acp_loop(
                             } else if v["error"] == "not_found" {
                                 let db_lock = db.lock().await;
                                 let _ = db_lock.update_task_status(run_id, "lost");
+                            }
+                        } else if res_id.starts_with("respond|") {
+                            if let Some(new_run_id) = v["payload"]["runId"].as_str() {
+                                let parts: Vec<&str> = res_id.split('|').collect();
+                                if parts.len() == 3 {
+                                    let old_run_id = parts[1].to_string();
+                                    virtual_run_map.insert(new_run_id.to_string(), old_run_id);
+                                    println!("[ACP] Mapped dynamically generated AutoClaw runId {} to original Jiling runId {}", new_run_id, parts[1]);
+                                }
                             }
                         }
                     }

@@ -29,7 +29,8 @@ const CodeReviewCard = (props: CodeReviewProps) => {
     const [activeLineComment, setActiveLineComment] = useState<number | null>(null);
     const [activeLineInput, setActiveLineInput] = useState('');
 
-    const lines = diff.split('\n');
+    const safeDiff = diff || '';
+    const lines = safeDiff.split('\n');
 
     const handleAction = (type: 'approve' | 'reject') => {
         if (status !== 'pending') return;

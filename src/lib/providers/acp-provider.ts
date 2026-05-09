@@ -140,13 +140,18 @@ export class AcpProviderAdapter implements AgentProviderAdapter {
           handlers.onProgress({ text: data.text, channel: "assistant" });
         }
       } else if (event_type === "lifecycle") {
-        if (data.phase === "end") {
+        if (data.phase === "end" || data.phase === "completed" || data.phase === "success") {
+          console.log(`[ACP] 收到结束信号: phase=${data.phase}, run_id=${run_id}`);
+          if (handlers.onProgress) handlers.onProgress({ text: `[DEBUG] 收到前端结束信号! phase=${data.phase}, 准备获取 output...`, channel: "system" });
           try {
             const output = await invoke<string>("get_task_output", { runId: run_id });
+            console.log(`[ACP] 获取到任务输出长度: ${output?.length || 0}`);
+            if (handlers.onProgress) handlers.onProgress({ text: `[DEBUG] 成功获取 output, 长度=${output?.length || 0}`, channel: "system" });
             if (handlers.onCompleted) {
               handlers.onCompleted({ output: output || "任务执行完毕，无返回输出。" });
             }
           } catch (error) {
+            console.error("[ACP] get_task_output 失败:", error);
             if (handlers.onFailed) {
               handlers.onFailed({ error: String(error), recoverable: false });
             }

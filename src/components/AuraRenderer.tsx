@@ -13,19 +13,24 @@ export const AuraRenderer = ({ content, onAction }: AuraRendererProps) => {
     let a2uiPayload: any = null;
 
     try {
-        // 1. Try raw JSON
-        const trimmed = content.trim();
-        if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
-            const parsed = JSON.parse(trimmed);
-            if (parsed.type === 'a2ui' && parsed.payload) {
-                a2uiPayload = parsed.payload;
-            }
+        // Split by the sub-task separator we introduced, and focus on the latest content
+        const sections = content.split('\n\n---\n\n');
+        const lastSection = sections[sections.length - 1].trim();
+
+        // 1. Try raw JSON on the last section
+        if (lastSection.startsWith('{') && lastSection.endsWith('}')) {
+            try {
+                const parsed = JSON.parse(lastSection);
+                if (parsed.type === 'a2ui' && parsed.payload) {
+                    a2uiPayload = parsed.payload;
+                }
+            } catch (e) {}
         }
         
-        // 2. Try JSON inside markdown code blocks
+        // 2. Try JSON inside markdown code blocks on the last section
         if (!a2uiPayload) {
             const jsonBlockRegex = /```(?:json)?\s*(\{[\s\S]*?\})\s*```/;
-            const match = content.match(jsonBlockRegex);
+            const match = lastSection.match(jsonBlockRegex);
             if (match) {
                 try {
                     const parsed = JSON.parse(match[1]);
@@ -36,10 +41,11 @@ export const AuraRenderer = ({ content, onAction }: AuraRendererProps) => {
             }
         }
         
-        // 3. Fallback: Search for any object that looks like an A2UI payload in the text
+        // 3. Fallback: Search for any object that looks like an A2UI payload
+        // We use non-greedy matching, but to avoid nested JSON issues, it's a best-effort fallback
         if (!a2uiPayload) {
             const genericJsonRegex = /(\{[\s\S]*?"type"\s*:\s*"a2ui"[\s\S]*?\})/;
-            const match = content.match(genericJsonRegex);
+            const match = lastSection.match(genericJsonRegex);
             if (match) {
                 try {
                     const parsed = JSON.parse(match[1]);
@@ -67,5 +73,5 @@ export const AuraRenderer = ({ content, onAction }: AuraRendererProps) => {
     }
 
     // Default: Render as NoteCard (Markdown)
-    return <ComponentWrapper component="NoteCard" props={{ content }} />;
+    return <ComponentWrapper component="NoteCard" props={{ content: content || '' }} />;
 };
