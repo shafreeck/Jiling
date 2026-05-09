@@ -1852,6 +1852,19 @@ Note: If you output A2UI, return ONLY the JSON without any other text.`;
             >
               <KeyRound className="h-5 w-5" />
             </Button>
+
+            <Button
+              variant={enableA2UI ? "default" : "ghost"}
+              size="icon"
+              onClick={() => setEnableA2UI(!enableA2UI)}
+              className={`h-10 w-10 rounded-full border backdrop-blur-md transition-all duration-300 [app-region:no-drag] ${enableA2UI
+                ? "bg-emerald-500! text-black! border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.2)] scale-110"
+                : "bg-white/5 text-white/60 border-white/10 hover:bg-white/10 hover:text-white"
+                }`}
+              title={enableA2UI ? "已启用 A2UI 卡片" : "已禁用 A2UI 卡片"}
+            >
+              <AppWindow className="h-5 w-5" />
+            </Button>
           </div>
         </header>
 
@@ -1941,30 +1954,9 @@ Note: If you output A2UI, return ONLY the JSON without any other text.`;
                     placeholder={apiKeyConfigured ? "已配置 (留空保留当前密钥)" : "输入你的 Gemini API Key"}
                     className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm outline-none transition focus:border-primary/50 focus:bg-white/10"
                   />
-                  {settingsError && (
-                    <div className="mt-2 p-4 rounded-xl bg-white/3 border border-white/5 text-[11px] text-white/50 leading-relaxed italic whitespace-pre-wrap wrap-break-word overflow-hidden">
-                      <p className="text-xs text-destructive">{settingsError}</p>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex items-center justify-between py-2">
-                  <div>
-                    <label className="text-sm font-medium text-white">启用 A2UI 卡片</label>
-                    <p className="text-xs text-white/50">关闭后将不展示任何毛玻璃卡片</p>
+                  <div className="mt-2 p-4 rounded-xl bg-white/3 border border-white/5 text-[11px] text-white/50 leading-relaxed italic whitespace-pre-wrap wrap-break-word overflow-hidden">
+                    {settingsError && <p className="text-xs text-destructive">{settingsError}</p>}
                   </div>
-                  <button
-                    onClick={() => setEnableA2UI(!enableA2UI)}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
-                      enableA2UI ? "bg-emerald-500" : "bg-white/10"
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                        enableA2UI ? "translate-x-6" : "translate-x-1"
-                      }`}
-                    />
-                  </button>
                 </div>
 
                 <div className="flex gap-3 pt-4">
