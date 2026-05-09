@@ -121,29 +121,16 @@ export class AcpProviderAdapter implements AgentProviderAdapter {
     // Currently, our ACP backend expects `agent` and `task`
     // We pass `main` as the default agent for now, or read from config
     
-    const a2uiDocs = `
-## A2UI Capabilities
-You can use rich UI cards in your responses. To use a card, output a JSON object with the following format in your response (either as the root object or inside a \`\`\`json code block):
-{ "type": "a2ui", "requestId": "unique_id", "payload": { "component": "ComponentName", "props": {...} } }
-
-Available Components:
-- "ApprovalCard": For task approvals or confirmations. Props: { "title": string, "description": string, "severity": "info"|"warning"|"critical", "actionLabel": string }. Note: "description" supports Markdown (tables, formatting).
-- "CodeReviewCard": For code reviews. Props: { "files": Array<{ "filename": string, "content": string, "language": string }> }
-- "NoteCard": For displaying markdown notes or summaries. Props: { "content": string }
+    // 后端默认提示词已经包含了 ApprovalCard, CodeReviewCard, NoteCard。
+    // 我们在这里**只追加**我们新开发的 3 个组件，不需要在运行时做任何愚蠢的字符串判断！
+    const additionalA2uiDocs = `
+## Additional A2UI Components
 - "ChartCard": For displaying charts. Props: { "title": string, "type": "line"|"bar", "data": Array<{ "label": string, "value": number }>, "color"?: string }
 - "TaskListCard": For displaying lists of tasks. Props: { "title": string, "tasks": Array<{ "id": string, "title": string, "completed": boolean, "description"?: string, "cancelled"?: boolean }> }
 - "CanvasCard": For displaying topology graphs (mind maps, task flows). Props: { "nodes": Array<{ "id": string, "label": string, "status": "processing"|"success"|"error", "size"?: "small"|"medium"|"large" }>, "links": Array<{ "source": string, "target": string, "label"?: string }> }
 `;
-
-    // 如果后端已经提供了旧版的 A2UI 文档（通常以 "Jiling A2UI" 开头），
-    // 我们直接切断它，用我们最新的 a2uiDocs 完全替换，彻底避免重复！
-    let cleanRoleDesc = task.identity.runtimeRoleDescription || "";
-    const a2uiIndex = cleanRoleDesc.indexOf('Jiling A2UI');
-    if (a2uiIndex !== -1) {
-      cleanRoleDesc = cleanRoleDesc.substring(0, a2uiIndex).trim();
-    }
     
-    const systemInstruction = `${cleanRoleDesc}\n\n${a2uiDocs.trim()}`;
+    const systemInstruction = `${task.identity.runtimeRoleDescription || ""}\n\n${additionalA2uiDocs.trim()}`;
 
     const runId = await invoke<string>("execute_agent_acp_task", {
       providerId: this.id,
