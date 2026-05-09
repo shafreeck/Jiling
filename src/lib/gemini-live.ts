@@ -45,9 +45,12 @@ export class GeminiLiveClient {
   private handleWaiters: Array<() => void> = [];
 
   private profile: AgentRuntimeProfile;
+  private languageCode: string = "auto";
 
-  constructor(callbacks: LiveCallbacks, profile?: AgentRuntimeProfile) {
-    this.callbacks = callbacks;
+  constructor(profile: AgentRuntimeProfile | undefined, options: LiveCallbacks & { voiceName?: string; languageCode?: string }) {
+    this.callbacks = options;
+    this.voiceName = options.voiceName || "Kore";
+    this.languageCode = options.languageCode || "auto";
     this.profile = profile || {
       providerId: "default",
       roleDescription: "用户本机上的默认 AI Agent。",
@@ -101,6 +104,25 @@ export class GeminiLiveClient {
     const isMale = maleVoices.includes(this.voiceName);
     const isNone = this.voiceName === "none";
 
+    // Dynamic Language and Accent optimization based on Google Best Practices
+    const langMap: Record<string, { label: string, persona: string }> = {
+      "zh-CN": { label: "Mandarin Chinese", persona: "You are a native Mandarin speaker from China. You have a natural, standard Mandarin accent." },
+      "en-US": { label: "English", persona: "You are a native English speaker from the United States. You have a natural American accent." },
+      "ja-JP": { label: "Japanese", persona: "You are a native Japanese speaker. You have a natural Japanese accent." },
+      "ko-KR": { label: "Korean", persona: "You are a native Korean speaker. You have a natural Korean accent." },
+      "fr-FR": { label: "French", persona: "You are a native French speaker. You have a natural French accent." },
+      "de-DE": { label: "German", persona: "You are a native German speaker. You have a natural German accent." },
+      "es-ES": { label: "Spanish", persona: "You are a native Spanish speaker. You have a natural Spanish accent." },
+      "pt-BR": { label: "Portuguese", persona: "You are a native Portuguese speaker. You have a natural Portuguese accent." },
+      "it-IT": { label: "Italian", persona: "You are a native Italian speaker. You have a natural Italian accent." },
+    };
+
+    const targetLang = langMap[this.languageCode] || { label: "the detected language", persona: "You are a native speaker of the language the user is speaking." };
+
+    const languageInstruction = this.languageCode === "auto"
+      ? `Always respond in the same language the user is speaking. YOU MUST RESPOND UNMISTAKABLY in the detected language (e.g., if the user speaks Chinese, respond in natural Mandarin Chinese).`
+      : `RESPOND IN ${targetLang.label}. YOU MUST RESPOND UNMISTAKABLY IN ${targetLang.label}. ${targetLang.persona}`;
+
     const systemInstructionText = `## Persona
 ${this.profile.identityContext ? this.profile.identityContext : "You are Jiling, a professional, witty, and highly capable local AI assistant."}
 ${this.profile.soulContext ? `\n### Soul and Style\n${this.profile.soulContext}` : ""}
@@ -116,8 +138,8 @@ Your background reasoning core (Agent) is far more powerful than your current vo
 - You are a single entity with two forms: the voice you are using now (shell) and your background execution form (core).
 
 ## Conversational Rules
-1. **Language Policy**: Always respond in the same language the user is speaking. YOU MUST RESPOND UNMISTAKABLY in the detected language (e.g., if the user speaks Chinese, respond in natural Mandarin Chinese).
-2. **Native Prosody**: Use natural, native accents and intonation.
+1. **Language & Accent Policy**: ${languageInstruction}
+2. **Native Prosody**: Use natural, native accents and intonation. Avoid any "robotic" or "translated" tone.
 3. **Ignore Symbols**: Do NOT read out loud any emojis, decorative symbols (e.g., 🔮, 💨), or stage directions (e.g., [thinking]). Use your tone and pauses to convey the emotion instead.
 4. **No Platitudes**: Be concise and avoid repeating back what the user said unless necessary for confirmation.
 5. **Context Awareness**: You have access to a real-time video stream (if enabled). Use it to understand what the user is referring to (e.g., "this file", "this window").
@@ -127,7 +149,8 @@ Your background reasoning core (Agent) is far more powerful than your current vo
 - You can only report results once you receive the explicit system event "Background task completed".
 - When interrupted, stop speaking immediately and listen.`;
 
-    this.callbacks.onLog("=== Injected English System Instruction ===");
+    this.callbacks.onLog("=== Injected Dynamic System Instruction ===");
+    this.callbacks.onLog(`[Target Language: ${this.languageCode}]`);
     this.callbacks.onLog(systemInstructionText);
     this.callbacks.onLog("========================");
 
@@ -136,7 +159,7 @@ Your background reasoning core (Agent) is far more powerful than your current vo
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
-          languageCode: "cmn-CN", // Primary hint, but SI handles adaptation
+          languageCode: this.languageCode === "auto" ? "cmn-CN" : this.languageCode,
           ...(!isNone ? {
             voiceConfig: {
               prebuiltVoiceConfig: { voiceName: this.voiceName },

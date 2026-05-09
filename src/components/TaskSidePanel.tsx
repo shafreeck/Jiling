@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { X, ListChecks, History, ChevronRight, Terminal, Activity, CheckCircle2, XCircle, Clock, Pin, PinOff } from "lucide-react";
+import { X, ListChecks, History, ChevronRight, ChevronDown, Terminal, Activity, CheckCircle2, XCircle, Clock, Pin, PinOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import ReactMarkdown from "react-markdown";
@@ -44,12 +44,7 @@ export function TaskSidePanel({
 }: TaskSidePanelProps) {
   const selectedTask = tasks.find(t => t.runId === selectedTaskId);
 
-  const cleanText = (text: string) => {
-    if (!text) return text;
-    return text
-      .replace(/(?<=[\u4e00-\u9fa5])\s+(?=[\u4e00-\u9fa5])/g, "")
-      .replace(/(?<=[\u4e00-\u9fa5])\s+(?=[，。？！；：、“”『』「」])|(?<=[，。？！；：、“”『』「」])\s+(?=[\u4e00-\u9fa5])/g, "");
-  };
+  const cleanText = (text: string) => text;
 
   return (
     <AnimatePresence>
@@ -76,15 +71,15 @@ export function TaskSidePanel({
                 <ListChecks className="h-5 w-5 text-primary" />
                 <span>任务管理</span>
               </div>
-              <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full text-white/60 hover:text-white">
+              <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full text-white/60 hover:text-white mr-2">
                 <X className="h-5 w-5" />
               </Button>
             </div>
 
             <div className="flex flex-1 overflow-hidden">
               {/* Task List */}
-              <div className={`flex flex-col border-r border-white/10 transition-all ${selectedTask ? "w-64" : "w-full"}`}>
-                <ScrollArea className="flex-1 p-2">
+              <div className={`flex flex-col h-full border-r border-white/10 transition-all ${selectedTask ? "w-64" : "w-full"}`}>
+                <ScrollArea className="h-full p-2">
                   <div className="space-y-2">
                     {tasks.length === 0 && (
                       <div className="flex flex-col items-center justify-center py-12 text-center text-white/40">
@@ -103,7 +98,10 @@ export function TaskSidePanel({
                         }`}
                       >
                         <div className="flex items-start justify-between gap-2">
-                          <span className={`text-sm font-medium line-clamp-1 ${selectedTaskId === task.runId ? "text-white" : "text-white/70"}`}>
+                          <span 
+                            title={task.title}
+                            className={`text-[13px] font-semibold leading-tight line-clamp-2 ${selectedTaskId === task.runId ? "text-white" : "text-white/70"}`}
+                          >
                             {task.title}
                           </span>
                           <TaskStatusIcon phase={task.phase} className="h-4 w-4 shrink-0" />
@@ -120,49 +118,66 @@ export function TaskSidePanel({
 
               {/* Task Detail */}
               {selectedTask && (
-                <div className="flex flex-1 flex-col min-h-0 bg-white/2">
-                  <ScrollArea className="flex-1">
+                <div className="flex flex-1 flex-col h-full min-h-0 bg-white/2">
+                  <ScrollArea className="h-full">
                     <div className="p-6 space-y-6">
-                      <div>
-                        <h3 className="text-lg font-semibold text-white leading-tight">{selectedTask.title}</h3>
-                        <div className="mt-2 flex items-center justify-between">
-                          <div className="flex items-center gap-3">
+                      <div className="space-y-4">
+                        <div>
+                          <div className="flex items-center justify-between gap-4">
+                            <h3 className="text-sm font-bold text-white leading-tight line-clamp-2 flex-1">{selectedTask.title}</h3>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {(selectedTask.phase === "running" || selectedTask.phase === "submitted") && (
+                                <button 
+                                  onClick={() => onAbortTask(selectedTask.runId)}
+                                  className="inline-flex items-center justify-center h-7 px-3 p-0 rounded-full text-[10px] font-bold bg-destructive/10 border border-destructive/30 text-destructive hover:bg-destructive hover:text-white transition-all shadow-sm leading-none appearance-none outline-none"
+                                >
+                                  <XCircle className="h-3.5 w-3.5 mr-1.5 shrink-0" />
+                                  <span className="translate-y-[-0.5px]">终止任务</span>
+                                </button>
+                              )}
+                              <Button 
+                                variant="secondary" 
+                                size="sm" 
+                                onClick={onTogglePin}
+                                className={`h-7 px-2.5 rounded-lg text-[10px] font-medium border transition-all ${
+                                  isPinned 
+                                    ? "bg-primary/20 text-primary border-primary/30 hover:bg-primary/30" 
+                                    : "bg-white/5 text-white/70 border-white/10 hover:bg-white/15 hover:text-white"
+                                }`}
+                              >
+                                {isPinned ? <PinOff className="h-3 w-3" /> : <Pin className="h-3 w-3" />}
+                                <span className="ml-1">{isPinned ? "取消固定" : "固定显示"}</span>
+                              </Button>
+                            </div>
+                          </div>
+
+                          <details className="mt-3 group">
+                            <summary className="flex items-center cursor-pointer text-[10px] text-white/30 hover:text-white/50 transition-colors list-none">
+                              <ChevronDown className="h-3 w-3 mr-1 transition-transform group-open:rotate-180" />
+                              <span>查看原始请求内容</span>
+                            </summary>
+                            <div className="mt-2 p-4 rounded-xl bg-white/3 border border-white/5 text-[11px] text-white/50 leading-relaxed italic whitespace-pre-wrap wrap-break-word overflow-hidden">
+                              {selectedTask.title}
+                            </div>
+                          </details>
+                          
+                          <div className="mt-4 flex items-center gap-3">
                             <TaskStatusBadge phase={selectedTask.phase} />
                             <span className="text-xs text-white/40">{selectedTask.providerName}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {(selectedTask.phase === "running" || selectedTask.phase === "submitted") && (
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                onClick={() => onAbortTask(selectedTask.runId)}
-                                className="h-7 px-2.5 rounded-lg text-[10px] font-medium text-destructive hover:bg-destructive/10 hover:text-destructive border border-transparent hover:border-destructive/20 transition-all"
-                              >
-                                <XCircle className="h-3 w-3 mr-1" />
-                                终止任务
-                              </Button>
-                            )}
-                            <Button 
-                              variant="secondary" 
-                              size="sm" 
-                              onClick={onTogglePin}
-                              className={`h-7 px-2.5 rounded-lg text-[10px] font-medium border transition-all ${
-                                isPinned 
-                                  ? "bg-primary/20 text-primary border-primary/30 hover:bg-primary/30" 
-                                  : "bg-white/5 text-white/70 border-white/10 hover:bg-white/15 hover:text-white"
-                              }`}
-                            >
-                              {isPinned ? <PinOff className="h-3 w-3" /> : <Pin className="h-3 w-3" />}
-                              {isPinned ? "取消固定" : "固定显示"}
-                            </Button>
                           </div>
                         </div>
                       </div>
 
                       {selectedTask.output ? (
-                        <div className="prose prose-invert prose-sm max-w-none 
-                          prose-headings:text-white prose-p:text-white/80 prose-strong:text-white
-                          prose-table:border prose-table:border-white/10 prose-th:bg-white/5 prose-th:p-2 prose-td:p-2 prose-td:border-t prose-td:border-white/10"
+                        <div className="prose prose-invert prose-xs max-w-none wrap-break-word overflow-x-hidden
+                          prose-headings:text-white prose-headings:font-bold prose-headings:tracking-tight prose-headings:mb-2 prose-headings:mt-4 prose-headings:wrap-break-word
+                          prose-h1:text-base prose-h2:text-sm prose-h3:text-xs
+                          prose-p:text-white/70 prose-p:leading-relaxed prose-p:my-1.5 prose-p:text-[10.5px] prose-p:wrap-break-word
+                          prose-strong:text-white prose-li:text-[10.5px] prose-li:text-white/70
+                          prose-table:w-full prose-table:border-collapse prose-table:my-4 prose-table:table-fixed
+                          prose-th:bg-white/5 prose-th:p-2 prose-th:text-left prose-th:text-[10px] prose-th:font-bold prose-th:text-white/40 prose-th:uppercase prose-th:tracking-wider
+                          prose-td:p-2 prose-td:border-t prose-td:border-white/5 prose-td:text-white/80 prose-td:text-[10.5px] prose-td:break-all
+                          selection:bg-primary/30 font-sans"
                         >
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>{cleanText(selectedTask.output)}</ReactMarkdown>
                         </div>

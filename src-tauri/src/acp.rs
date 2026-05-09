@@ -468,3 +468,10 @@ pub async fn get_agent_task_status(
     let db = state.db.lock().await;
     db.get_task_snapshot(&run_id).map_err(|e| e.to_string())
 }
+#[tauri::command]
+pub async fn list_agent_tasks(
+    state: tauri::State<'_, Arc<GlobalAcpManager>>,
+) -> Result<Vec<crate::db::TaskSnapshot>, String> {
+    let db = state.db.lock().await;
+    db.get_all_tasks().map_err(|e| e.to_string())
+}

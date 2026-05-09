@@ -22,6 +22,10 @@ import {
   X,
   AppWindow,
   ListTodo,
+  LogOut,
+  Maximize2,
+  Languages,
+  XCircle,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { SmartOrb } from "@/components/SmartOrb";
@@ -81,36 +85,33 @@ export type ProviderOption = {
 };
 
 const VOICES = [
-  { id: "none", name: "官方原生" },
-  { id: "Aoede", name: "缪斯女声" },
-  { id: "Leda", name: "青春女声" },
-  { id: "Kore", name: "坚定女声" },
-  { id: "Achernar", name: "温柔女声" },
-  { id: "Autonoe", name: "阳光女声" },
-  { id: "Despina", name: "友好女声" },
-  { id: "Erinome", name: "清晰女声" },
-  { id: "Laomedeia", name: "活泼女声" },
-  { id: "Pulcherrima", name: "华丽女声" },
-  { id: "Sadachbia", name: "生动女声" },
-  { id: "Schedar", name: "平稳女声" },
-  { id: "Sulafat", name: "宁静女声" },
-  { id: "Vindemiatrix", name: "明亮女声" },
-  { id: "Callirrhoe", name: "随性女声" },
-  { id: "Enceladus", name: "柔和女声" },
-  { id: "Charon", name: "博学男声" },
-  { id: "Sadaltager", name: "深沉男声" },
-  { id: "Puck", name: "活力男声" },
-  { id: "Fenrir", name: "稳重男声" },
-  { id: "Orus", name: "成熟男声" },
-  { id: "Zephyr", name: "阳光男声" },
-  { id: "Iapetus", name: "清晰男声" },
-  { id: "Umbriel", name: "沉稳男声" },
-  { id: "Algieba", name: "流畅男声" },
-  { id: "Achird", name: "友好男声" },
-  { id: "Algenib", name: "浑厚男声" },
-  { id: "Gacrux", name: "成熟男声" },
-  { id: "Zubenelgenubi", name: "随性男声" },
-  { id: "Alnilam", name: "深邃男声" },
+  { id: "none", name: "Native (原生模型音色)" },
+  { id: "Puck", name: "Puck (友好/热情 - 中男音)" },
+  { id: "Charon", name: "Charon (冷静/权威 - 低男音)" },
+  { id: "Kore", name: "Kore (温暖/专业 - 中女音)" },
+  { id: "Fenrir", name: "Fenrir (活力/动感 - 中男音)" },
+  { id: "Aoede", name: "Aoede (清晰/通透 - 中女音)" },
+  { id: "Sadaltager", name: "Sadaltager (低沉/稳重 - 男音)" },
+  { id: "Orus", name: "Orus (平实/自然 - 男音)" },
+  { id: "Zephyr", name: "Zephyr (轻快/温润 - 男音)" },
+  { id: "Iapetus", name: "Iapetus (浑厚/有力 - 男音)" },
+  { id: "Umbriel", name: "Umbriel (沉稳/磁性 - 男音)" },
+  { id: "Algieba", name: "Algieba (明亮/干练 - 男音)" },
+  { id: "Achird", name: "Achird (随性/亲和 - 男音)" },
+  { id: "Algenib", name: "Algenib (深邃/感性 - 男音)" },
+];
+
+const LANGUAGES = [
+  { id: "auto", name: "自动识别" },
+  { id: "zh-CN", name: "中文 (简体)" },
+  { id: "en-US", name: "English (US)" },
+  { id: "ja-JP", name: "日本語" },
+  { id: "ko-KR", name: "한국어" },
+  { id: "fr-FR", name: "Français" },
+  { id: "de-DE", name: "Deutsch" },
+  { id: "es-ES", name: "Español" },
+  { id: "pt-BR", name: "Português" },
+  { id: "it-IT", name: "Italiano" },
 ];
 
 function errorMessage(error: unknown) {
@@ -140,7 +141,7 @@ function formatTaskOutput(output: JilingTaskOutput | string) {
 function taskTitleFromRequest(request: string) {
   const compact = request.replace(/\s+/g, " ").trim();
   if (!compact) return "本地代理任务";
-  return compact.length > 34 ? `${compact.slice(0, 34)}...` : compact;
+  return compact;
 }
 
 function phaseLabel(phase?: AgentTaskPhase) {
@@ -404,6 +405,23 @@ export default function JilingPage() {
     setTimeout(() => setToast(null), 3000);
   };
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [selectedLanguage, setSelectedLanguage] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("jiling_selected_language");
+      if (saved) return saved;
+      // Auto-detect from system environment
+      const sysLang = navigator.language;
+      if (sysLang.startsWith("zh")) return "zh-CN";
+      if (sysLang.startsWith("en")) return "en-US";
+      if (sysLang.startsWith("ja")) return "ja-JP";
+      if (sysLang.startsWith("ko")) return "ko-KR";
+      if (sysLang.startsWith("fr")) return "fr-FR";
+      if (sysLang.startsWith("de")) return "de-DE";
+      if (sysLang.startsWith("es")) return "es-ES";
+      return "auto";
+    }
+    return "auto";
+  });
   const [agentTasks, setAgentTasks] = useState<AgentTaskView[]>([]);
   const [apiKeyConfigured, setApiKeyConfigured] = useState<boolean | null>(null);
   const [apiKeySource, setApiKeySource] = useState<string | null>(null);
@@ -424,6 +442,30 @@ export default function JilingPage() {
   const [isVideoOn, setIsVideoOn] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
+
+  // Load initial tasks from database
+  useEffect(() => {
+    const loadTasks = async () => {
+      try {
+        const history = await invoke<any[]>("list_agent_tasks");
+        const mappedTasks: AgentTaskView[] = history.map(t => ({
+          runId: t.run_id,
+          title: t.message,
+          providerName: t.agent_id,
+          phase: (t.status === "end" || t.status === "completed") ? "completed" : t.status as AgentTaskPhase,
+          startedAt: new Date(t.created_at).getTime(),
+          updatedAt: new Date(t.updated_at).getTime(),
+          progress: [], // Progress is not persisted individually for now
+          output: t.output,
+          error: t.status === "failed" ? t.message : undefined
+        }));
+        setAgentTasks(mappedTasks);
+      } catch (e) {
+        console.error("Failed to load task history:", e);
+      }
+    };
+    loadTasks();
+  }, []);
 
   const selectedVoiceRef = useRef(selectedVoice);
   const selectedProviderIdRef = useRef(selectedProviderId);
@@ -471,9 +513,11 @@ export default function JilingPage() {
     const savedVoice = localStorage.getItem("jiling_voice");
     const savedProvider = localStorage.getItem("jiling_provider");
     const savedLogs = localStorage.getItem("jiling_show_logs");
+    const savedLang = localStorage.getItem("jiling_selected_language");
     if (savedVoice) setSelectedVoice(savedVoice);
     if (savedProvider) setSelectedProviderId(savedProvider);
     if (savedLogs === "true") setShowLogs(true);
+    if (savedLang) setSelectedLanguage(savedLang);
     isHydratedRef.current = true;
   }, []);
 
@@ -492,6 +536,11 @@ export default function JilingPage() {
     if (!isHydratedRef.current) return;
     localStorage.setItem("jiling_show_logs", String(showLogs));
   }, [showLogs]);
+
+  useEffect(() => {
+    if (!isHydratedRef.current) return;
+    localStorage.setItem("jiling_selected_language", selectedLanguage);
+  }, [selectedLanguage]);
 
   // Global hotkeys
   useEffect(() => {
@@ -571,7 +620,6 @@ export default function JilingPage() {
           audio: false 
         });
         videoStreamRef.current = stream;
-        videoStreamRef.current = stream;
         setIsVideoOn(true);
         setIsSharing(false);
       } catch (error) {
@@ -591,7 +639,6 @@ export default function JilingPage() {
           video: true, 
           audio: false 
         });
-        videoStreamRef.current = stream;
         videoStreamRef.current = stream;
         
         // Handle stream stop via browser UI
@@ -803,7 +850,9 @@ export default function JilingPage() {
   };
 
   const createClient = (profile?: AgentRuntimeProfile) => {
-    const client = new GeminiLiveClient({
+    const client = new GeminiLiveClient(profile, {
+      voiceName: selectedVoice,
+      languageCode: selectedLanguage,
       onLog: addLog,
       onError: (error) => addLog(`[Live] 通信异常: ${errorMessage(error)}`),
       onClose: () => {
@@ -817,7 +866,7 @@ export default function JilingPage() {
         }
       },
       onMessage: (message) => handleLiveMessage(message),
-    }, profile);
+    });
     client.voiceName = selectedVoiceRef.current;
     return client;
   };
@@ -984,14 +1033,7 @@ export default function JilingPage() {
     }
   };
 
-  const cleanTranscriptText = (text: string) => {
-    if (!text) return text;
-    // Remove spaces between Chinese characters
-    let cleaned = text.replace(/(?<=[\u4e00-\u9fa5])\s+(?=[\u4e00-\u9fa5])/g, "");
-    // Remove spaces between Chinese character and punctuation
-    cleaned = cleaned.replace(/(?<=[\u4e00-\u9fa5])\s+(?=[，。？！；：、“”『』「」])|(?<=[，。？！；：、“”『』「」])\s+(?=[\u4e00-\u9fa5])/g, "");
-    return cleaned;
-  };
+  const cleanTranscriptText = (text: string) => text;
 
   const handleLiveMessage = (message: LiveMessage) => {
     if (message.goAway) {
@@ -1272,7 +1314,6 @@ export default function JilingPage() {
 
   const readingModeContent = (isTaskPinned && !isSharing && !isVideoOn) ? (
     <div className="flex h-full w-full flex-col overflow-hidden">
-      {/* Header Strip */}
       <div className="flex items-center justify-between border-b border-white/5 bg-white/5 px-6 py-2 backdrop-blur-md">
         <div className="flex items-center gap-2">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-primary/20 bg-primary/10">
@@ -1291,14 +1332,24 @@ export default function JilingPage() {
         </Button>
       </div>
 
-      {/* Main Content Area */}
       <div className="relative flex-1 min-h-0 overflow-hidden">
         <ScrollArea className="h-full w-full">
           <div className="prose max-w-none px-6 py-4 pb-32">
             {activeTask?.output ? (
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {cleanTranscriptText(activeTask.output)}
-              </ReactMarkdown>
+              <div className="prose prose-invert prose-xs max-w-none wrap-break-word overflow-x-hidden
+                          prose-headings:text-white prose-headings:font-bold prose-headings:tracking-tight prose-headings:mb-2 prose-headings:mt-4 prose-headings:wrap-break-word
+                          prose-h1:text-base prose-h2:text-sm prose-h3:text-xs
+                          prose-p:text-white/70 prose-p:leading-relaxed prose-p:my-1.5 prose-p:text-[10.5px] prose-p:wrap-break-word
+                          prose-strong:text-white prose-li:text-[10.5px] prose-li:text-white/70
+                          prose-table:w-full prose-table:border-collapse prose-table:my-4 prose-table:table-fixed
+                          prose-th:bg-white/5 prose-th:p-2 prose-th:text-left prose-th:text-[10px] prose-th:font-bold prose-th:text-white/40 prose-th:uppercase prose-th:tracking-wider
+                          prose-td:p-2 prose-td:border-t prose-td:border-white/5 prose-td:text-white/80 prose-td:text-[10.5px] prose-td:break-all
+                          selection:bg-primary/30 font-sans"
+              >
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {cleanTranscriptText(activeTask.output)}
+                </ReactMarkdown>
+              </div>
             ) : (
               <div className="flex flex-col items-center justify-center py-20 text-center text-white/20">
                 <Sparkles className="mb-4 h-12 w-12 animate-pulse" />
@@ -1307,7 +1358,6 @@ export default function JilingPage() {
             )}
           </div>
         </ScrollArea>
-
       </div>
     </div>
   ) : null;
@@ -1335,8 +1385,8 @@ export default function JilingPage() {
   }, [isVideoOn, isSharing, readingModeContent]);
 
   return (
-    <main className="relative h-screen w-full overflow-hidden bg-black text-white selection:bg-primary/30">
-      {/* Window Breathing Edge Glow */}
+    <>
+      <main className="relative h-screen w-full overflow-hidden bg-black text-white selection:bg-primary/30">
       <AnimatePresence>
         {status !== "idle" && (
           <motion.div
@@ -1344,10 +1394,10 @@ export default function JilingPage() {
             animate={{ 
               opacity: status === "speaking" ? 0.3 + (volume * 0.7) : 0.2,
               boxShadow: status === "thinking" 
-                ? "inset 0 0 80px rgba(168, 85, 247, 0.4)" // Purple for thinking
+                ? "inset 0 0 80px rgba(168, 85, 247, 0.4)"
                 : status === "listening"
-                ? "inset 0 0 60px rgba(72, 255, 222, 0.3)"  // Cyan for listening
-                : `inset 0 0 ${60 + (volume * 100)}px rgba(16, 185, 129, 0.5)`, // Dynamic pulse for speaking
+                ? "inset 0 0 60px rgba(72, 255, 222, 0.3)"
+                : `inset 0 0 ${60 + (volume * 100)}px rgba(16, 185, 129, 0.5)`,
             }}
             exit={{ opacity: 0 }}
             transition={{ 
@@ -1360,7 +1410,6 @@ export default function JilingPage() {
         )}
       </AnimatePresence>
 
-      {/* Dynamic Toast Notification */}
       <AnimatePresence>
         {toast && (
           <motion.div
@@ -1379,7 +1428,6 @@ export default function JilingPage() {
         )}
       </AnimatePresence>
 
-      {/* Background Stage */}
       <div className="absolute inset-0 z-0">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_43%,rgba(72,255,222,0.08),transparent_24%),radial-gradient(circle_at_56%_39%,rgba(255,93,184,0.05),transparent_22%)]" />
         
@@ -1418,7 +1466,6 @@ export default function JilingPage() {
         </div>
       </div>
 
-
       <header data-tauri-drag-region className="relative flex items-center justify-between px-8 pt-10 pb-6 select-none" style={{ zIndex: 600 }}>
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
@@ -1431,6 +1478,31 @@ export default function JilingPage() {
                 className="h-9 w-36 appearance-none rounded-full border border-white/10 bg-white/5 pl-9 pr-8 text-xs text-white/60 outline-none backdrop-blur-xl transition hover:bg-white/10 focus:border-primary/50 disabled:opacity-50 [app-region:no-drag]"
               >
                 {VOICES.map(v => <option key={v.id} value={v.id} className="bg-[#1a1a1a] font-sans">{v.name}</option>)}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-white/30" />
+            </label>
+
+            <label className="relative">
+              <Languages className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/40" />
+              <select
+                disabled={isBusy || isConnected}
+                value={selectedLanguage}
+                onChange={(e) => {
+                  setSelectedLanguage(e.target.value);
+                  localStorage.setItem("jiling_selected_language", e.target.value);
+                }}
+                className="h-9 w-28 appearance-none rounded-full border border-white/10 bg-white/5 pl-9 pr-8 text-xs text-white/60 outline-none backdrop-blur-xl transition hover:bg-white/10 focus:border-primary/50 disabled:opacity-50 [app-region:no-drag]"
+              >
+                <option value="auto" className="bg-[#1a1a1a]">Auto</option>
+                <option value="zh-CN" className="bg-[#1a1a1a]">中文</option>
+                <option value="en-US" className="bg-[#1a1a1a]">English</option>
+                <option value="ja-JP" className="bg-[#1a1a1a]">日本語</option>
+                <option value="ko-KR" className="bg-[#1a1a1a]">한국어</option>
+                <option value="fr-FR" className="bg-[#1a1a1a]">Français</option>
+                <option value="de-DE" className="bg-[#1a1a1a]">Deutsch</option>
+                <option value="es-ES" className="bg-[#1a1a1a]">Español</option>
+                <option value="pt-BR" className="bg-[#1a1a1a]">Português</option>
+                <option value="it-IT" className="bg-[#1a1a1a]">Italiano</option>
               </select>
               <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-white/30" />
             </label>
@@ -1547,7 +1619,6 @@ export default function JilingPage() {
         </div>
       </header>
 
-      {/* Main Control Bar */}
       <ControlBar 
         isMuted={isMuted}
         onToggleMute={() => setIsMuted(!isMuted)}
@@ -1563,151 +1634,151 @@ export default function JilingPage() {
         isBusy={isBusy}
       />
 
-      {/* Task Side Panel */}
-      <TaskSidePanel 
-        isOpen={isSidePanelOpen}
-        onClose={() => setIsSidePanelOpen(false)}
-        tasks={agentTasks}
-        selectedTaskId={selectedTaskId}
-        onSelectTask={setSelectedTaskId}
-        isPinned={isTaskPinned}
-        onTogglePin={() => {
-          if (isSharing || isVideoOn) {
-            showToast("正在共享屏幕或视频，请先停止后再进入阅读模式", "error");
-            return;
-          }
-          setIsTaskPinned(!isTaskPinned);
-        }}
-        onAbortTask={handleAbortTask}
+
+      <canvas ref={canvasRef} className="hidden" aria-hidden="true" />
+    </main>
+    
+    <TaskSidePanel 
+      isOpen={isSidePanelOpen}
+      onClose={() => setIsSidePanelOpen(false)}
+      tasks={agentTasks}
+      selectedTaskId={selectedTaskId}
+      onSelectTask={setSelectedTaskId}
+      isPinned={isTaskPinned}
+      onTogglePin={() => {
+        if (isSharing || isVideoOn) {
+          showToast("正在共享屏幕或视频，请先停止后再进入阅读模式", "error");
+          return;
+        }
+        setIsTaskPinned(!isTaskPinned);
+      }}
+      onAbortTask={handleAbortTask}
+    />
+
+    <div className={`pointer-events-none fixed z-200 transition-all duration-500 ${
+      (isSharing || isTaskPinned || isVideoOn) 
+        ? "bottom-24 right-8 w-full max-w-sm" 
+        : "bottom-24 left-1/2 w-full max-w-4xl -translate-x-1/2 px-8"
+    }`}>
+      <TranscriptOverlay 
+        messages={transcript} 
+        visible={showTranscript && isConnected && status !== "idle"} 
+        pinned={isSharing || isTaskPinned || isVideoOn}
       />
+    </div>
 
-      {/* Settings Dialog */}
-      <AnimatePresence>
-        {showSettings && (
-          <div className="fixed inset-0 z-100 flex items-center justify-center bg-black/60 backdrop-blur-md">
-            <motion.div 
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="glass-panel w-full max-w-md rounded-3xl p-8"
-              style={{ zIndex: 800 }}
-            >
-              <div className="mb-6 flex items-center justify-between">
-                <h2 className="text-xl font-bold">应用设置</h2>
-                <Button variant="ghost" size="icon" onClick={() => setShowSettings(false)} className="rounded-full">
-                  <X className="h-5 w-5" />
-                </Button>
-              </div>
+    {(isSharing || isTaskPinned || isVideoOn) && (
+      <div className="pointer-events-none fixed bottom-8 right-8 z-200 scale-75 transform origin-right">
+        <SmartOrb
+          volume={volume}
+          features={audioFeatures}
+          status={status}
+          compact={true}
+        />
+      </div>
+    )}
 
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-white/60">Gemini API Key</label>
-                  <input 
-                    type="password"
-                    value={apiKeyInput}
-                    onChange={(e) => setApiKeyInput(e.target.value)}
-                    placeholder={apiKeyConfigured ? "已配置 (留空保留当前密钥)" : "输入你的 Gemini API Key"}
-                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm outline-none transition focus:border-primary/50 focus:bg-white/10"
-                  />
-                  {settingsError && <p className="text-xs text-destructive">{settingsError}</p>}
-                </div>
-
-                <div className="flex gap-3 pt-4">
-                  <Button 
-                    className="flex-1 rounded-xl h-12 bg-emerald-500 text-black hover:bg-emerald-400 font-bold transition-all shadow-[0_0_15px_rgba(16,185,129,0.2)]" 
-                    onClick={saveApiKey}
-                    disabled={isSavingSettings}
-                  >
-                    {isSavingSettings ? "正在保存..." : "保存设置"}
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    className="flex-1 rounded-xl h-12 border-white/10 bg-white/5 text-white hover:bg-white/10 hover:border-white/20 transition-all" 
-                    onClick={runSelfTest}
-                    disabled={isBusy}
-                  >
-                    运行自检
-                  </Button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Progressive Log Area */}
-      <AnimatePresence>
-        {showLogs && (
+    <AnimatePresence>
+      {showSettings && (
+        <div className="fixed inset-0 z-500 flex items-center justify-center bg-black/60 backdrop-blur-md">
           <motion.div 
-            initial={{ opacity: 0, x: 50 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 50 }}
-            className="fixed glass-panel rounded-3xl p-6 overflow-hidden flex flex-col shadow-2xl backdrop-blur-3xl border-white/20"
-            style={{ 
-              width: 'min(550px, 90vw)', 
-              height: 'min(700px, 75vh)', 
-              right: 'max(16px, 2vw)', 
-              top: '128px',
-              zIndex: 2000 
-            }}
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            className="glass-panel w-full max-w-md rounded-3xl p-8"
+            style={{ zIndex: 800 }}
           >
-            <div className="flex items-center justify-between mb-4 pb-2 border-b border-white/10">
-              <div className="flex items-center gap-2">
-                <Terminal className="h-4 w-4 text-white" />
-                <h3 className="text-[11px] font-bold text-white uppercase tracking-wider">系统调试控制台</h3>
-              </div>
-              <div className="flex items-center gap-4">
-                <button 
-                  onClick={() => setShowLogs(false)}
-                  className="text-white/40 hover:text-white transition-colors"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
+            <div className="mb-6 flex items-center justify-between">
+              <h2 className="text-xl font-bold">应用设置</h2>
+              <Button variant="ghost" size="icon" onClick={() => setShowSettings(false)} className="rounded-full">
+                <X className="h-5 w-5" />
+              </Button>
             </div>
 
-            <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
-              <div className="space-y-0.5 font-mono leading-tight">
-                {logs.map((log, i) => (
-                  <div key={i} className="flex gap-2 group border-b border-white/5 py-0.5 last:border-0 hover:bg-white/5 transition-colors">
-                    <span className="text-[9px] text-white/10 select-none w-6 shrink-0 text-right">{i + 1}</span>
-                    <span className="text-[10px] text-white/80 group-hover:text-white break-all whitespace-pre-wrap">{log}</span>
-                  </div>
-                ))}
-                <div ref={logEndRef} />
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-white/60">Gemini API Key</label>
+                <input 
+                  type="password"
+                  value={apiKeyInput}
+                  onChange={(e) => setApiKeyInput(e.target.value)}
+                  placeholder={apiKeyConfigured ? "已配置 (留空保留当前密钥)" : "输入你的 Gemini API Key"}
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm outline-none transition focus:border-primary/50 focus:bg-white/10"
+                />
+                <div className="mt-2 p-4 rounded-xl bg-white/3 border border-white/5 text-[11px] text-white/50 leading-relaxed italic whitespace-pre-wrap wrap-break-word overflow-hidden">
+                  {settingsError && <p className="text-xs text-destructive">{settingsError}</p>}
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <Button 
+                  className="flex-1 rounded-xl h-12 bg-emerald-500 text-black hover:bg-emerald-400 font-bold transition-all shadow-[0_0_15px_rgba(16,185,129,0.2)]" 
+                  onClick={saveApiKey}
+                  disabled={isSavingSettings}
+                >
+                  {isSavingSettings ? "正在保存..." : "保存设置"}
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="flex-1 rounded-xl h-12 border-white/10 bg-white/5 text-white hover:bg-white/10 hover:border-white/20 transition-all" 
+                  onClick={runSelfTest}
+                  disabled={isBusy}
+                >
+                  运行自检
+                </Button>
               </div>
             </div>
           </motion.div>
-        )}
-      </AnimatePresence>
-      {/* Smart Positioning Status Overlay - TOP LAYER */}
-      <div className={`pointer-events-none fixed z-200 transition-all duration-500 ${
-        (isSharing || isTaskPinned || isVideoOn) 
-          ? "bottom-24 right-8 w-full max-w-sm" 
-          : "bottom-24 left-1/2 w-full max-w-4xl -translate-x-1/2 px-8"
-      }`}>
-        <TranscriptOverlay 
-          messages={transcript} 
-          visible={showTranscript && isConnected && status !== "idle"} 
-          pinned={isSharing || isTaskPinned || isVideoOn}
-        />
-      </div>
-
-      {/* Compact Orb (Only in content modes) - TOP LAYER */}
-      {(isSharing || isTaskPinned || isVideoOn) && (
-        <div className="pointer-events-none fixed bottom-8 right-8 z-200 scale-75 transform origin-right">
-          <SmartOrb
-            volume={volume}
-            features={audioFeatures}
-            status={status}
-            compact={true}
-          />
         </div>
       )}
+    </AnimatePresence>
 
-      {/* Hidden canvas for vision sampling - ALWAYS MOUNTED */}
-      <canvas ref={canvasRef} className="hidden" aria-hidden="true" />
-    </main>
+    {/* Progressive Log Area - Outside main */}
+    <AnimatePresence>
+      {showLogs && (
+        <motion.div 
+          initial={{ opacity: 0, x: 50 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: 50 }}
+          className="fixed glass-panel rounded-3xl p-6 overflow-hidden flex flex-col shadow-2xl backdrop-blur-3xl border-white/20"
+          style={{ 
+            width: 'min(550px, 90vw)', 
+            height: 'min(700px, 75vh)', 
+            right: 'max(16px, 2vw)', 
+            top: '128px',
+            zIndex: 2000 
+          }}
+        >
+          <div className="flex items-center justify-between mb-4 pb-2 border-b border-white/10">
+            <div className="flex items-center gap-2">
+              <Terminal className="h-4 w-4 text-white" />
+              <h3 className="text-[11px] font-bold text-white uppercase tracking-wider">系统调试控制台</h3>
+            </div>
+            <div className="flex items-center gap-4">
+              <button 
+                onClick={() => setShowLogs(false)}
+                className="text-white/40 hover:text-white transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+            <div className="space-y-0.5 font-mono leading-tight">
+              {logs.map((log, i) => (
+                <div key={i} className="flex gap-2 group border-b border-white/5 py-0.5 last:border-0 hover:bg-white/5 transition-colors">
+                  <span className="text-[9px] text-white/10 select-none w-6 shrink-0 text-right">{i + 1}</span>
+                  <span className="text-[10px] text-white/80 group-hover:text-white break-all whitespace-pre-wrap">{log}</span>
+                </div>
+              ))}
+              <div ref={logEndRef} />
+            </div>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  </>
   );
 }
 

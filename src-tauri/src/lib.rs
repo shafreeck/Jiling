@@ -39,6 +39,7 @@ pub fn run() {
             acp::abort_agent_task,
             acp::get_task_output,
             acp::get_agent_task_status,
+            acp::list_agent_tasks,
             commands::get_api_key,
             commands::get_api_key_status,
             commands::set_api_key,

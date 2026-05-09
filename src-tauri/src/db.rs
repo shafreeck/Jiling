@@ -110,6 +110,29 @@ impl Db {
             },
         )
     }
+
+    pub fn get_all_tasks(&self) -> Result<Vec<TaskSnapshot>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT run_id, agent_id, status, message, output, created_at, updated_at FROM tasks ORDER BY created_at DESC"
+        )?;
+        let task_iter = stmt.query_map([], |row| {
+            Ok(TaskSnapshot {
+                run_id: row.get(0)?,
+                agent_id: row.get(1)?,
+                status: row.get(2)?,
+                message: row.get(3)?,
+                output: row.get(4)?,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
+            })
+        })?;
+
+        let mut tasks = Vec::new();
+        for task in task_iter {
+            tasks.push(task?);
+        }
+        Ok(tasks)
+    }
 }
 
 #[cfg(test)]
