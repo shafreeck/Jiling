@@ -30,6 +30,8 @@ import {
   Languages,
   XCircle,
   History as HistoryIcon,
+  Pin,
+  PinOff,
 } from "lucide-react";
 import { AuraRenderer } from "@/components/AuraRenderer";
 import { motion, AnimatePresence } from "framer-motion";
@@ -91,19 +93,19 @@ export type ProviderOption = {
 
 const VOICES = [
   { id: "none", name: "Native (原生模型音色)" },
-  { id: "Puck", name: "Puck (友好/热情 - 中男音)" },
-  { id: "Charon", name: "Charon (冷静/权威 - 低男音)" },
-  { id: "Kore", name: "Kore (温暖/专业 - 中女音)" },
-  { id: "Fenrir", name: "Fenrir (活力/动感 - 中男音)" },
-  { id: "Aoede", name: "Aoede (清晰/通透 - 中女音)" },
-  { id: "Sadaltager", name: "Sadaltager (低沉/稳重 - 男音)" },
-  { id: "Orus", name: "Orus (平实/自然 - 男音)" },
-  { id: "Zephyr", name: "Zephyr (轻快/温润 - 男音)" },
-  { id: "Iapetus", name: "Iapetus (浑厚/有力 - 男音)" },
-  { id: "Umbriel", name: "Umbriel (沉稳/磁性 - 男音)" },
-  { id: "Algieba", name: "Algieba (明亮/干练 - 男音)" },
-  { id: "Achird", name: "Achird (随性/亲和 - 男音)" },
-  { id: "Algenib", name: "Algenib (深邃/感性 - 男音)" },
+  { id: "Puck", name: "Puck (友好/热情 - 男中音)" },
+  { id: "Charon", name: "Charon (冷静/权威 - 男低音)" },
+  { id: "Kore", name: "Kore (温暖/专业 - 女中音)" },
+  { id: "Fenrir", name: "Fenrir (活力/动感 - 男中音)" },
+  { id: "Aoede", name: "Aoede (清晰/通透 - 女中音)" },
+  { id: "Sadaltager", name: "Sadaltager (低沉/稳重 - 男声)" },
+  { id: "Orus", name: "Orus (平实/自然 - 男声)" },
+  { id: "Zephyr", name: "Zephyr (轻快/温润 - 男声)" },
+  { id: "Iapetus", name: "Iapetus (浑厚/有力 - 男声)" },
+  { id: "Umbriel", name: "Umbriel (沉稳/磁性 - 男声)" },
+  { id: "Algieba", name: "Algieba (明亮/干练 - 男声)" },
+  { id: "Achird", name: "Achird (随性/亲和 - 男声)" },
+  { id: "Algenib", name: "Algenib (深邃/感性 - 男声)" },
 ];
 
 const LANGUAGES = [
@@ -405,19 +407,59 @@ export default function JilingPage() {
   const [enableA2UI, setEnableA2UI] = useState(true);
   const [showTextInput, setShowTextInput] = useState(false);
   const [textInputValue, setTextInputValue] = useState("");
+  const [isTextInputPinned, setIsTextInputPinned] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
+  const [isOnline, setIsOnline] = useState(false);
+  const tickTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    let unlistenFn: (() => void) | null = null;
+    
+    const setup = async () => {
+      const { listen } = await import("@tauri-apps/api/event");
+      const unlisten = await listen("acp-tick", () => {
+        setIsOnline(true);
+        if (tickTimeoutRef.current) {
+          clearTimeout(tickTimeoutRef.current);
+        }
+        tickTimeoutRef.current = setTimeout(() => setIsOnline(false), 15000);
+      });
+      unlistenFn = unlisten;
+    };
+    
+    setup();
+    
+    return () => {
+      if (unlistenFn) unlistenFn();
+      if (tickTimeoutRef.current) clearTimeout(tickTimeoutRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
-        setShowTextInput((prev) => !prev);
+        setShowTextInput((prev) => {
+          const next = !prev;
+          if (next) {
+            setIsTaskPinned(true);
+          }
+          return next;
+        });
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  // 当选择的 Provider 改变时，同步更新 adapterRef，无需等待语音启动
+  useEffect(() => {
+    const selected = providers.find(p => p.id === selectedProviderId);
+    if (selected) {
+      adapterRef.current = selected.adapter;
+    }
+  }, [selectedProviderId, providers]);
   const [toast, setToast] = useState<{ message: string; type: "info" | "error" } | null>(null);
 
   const showToast = (message: string, type: "info" | "error" = "info") => {
@@ -629,9 +671,14 @@ export default function JilingPage() {
   }, [isConnected, isVideoOn, isSharing]);
 
   const handleTextInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmitText();
+    // 如果正在使用输入法组词，不触发发送
+    if (e.nativeEvent.isComposing) return;
+    
+    if (e.key === 'Enter' || e.keyCode === 13) {
+      if (!e.shiftKey) {
+        e.preventDefault();
+        handleSubmitText();
+      }
     }
   };
 
@@ -639,7 +686,10 @@ export default function JilingPage() {
     if (!textInputValue.trim()) return;
     
     const adapter = adapterRef.current;
-    if (!adapter) return;
+    if (!adapter) {
+      showToast("后台代理未就绪，请稍后再试", "error");
+      return;
+    }
 
     try {
       const taskRef = await adapter.submitTask({
@@ -665,8 +715,36 @@ export default function JilingPage() {
         progress: [],
       });
 
+      void adapter.subscribeTask(taskRef, {
+        onProgress: (e) => {
+          addLog(`[代理] ${e.text}`);
+          appendTaskProgress(taskRef.runId, e.text);
+        },
+        onCompleted: (e) => {
+          const outputText = formatTaskOutput(e.output);
+          updateTask(taskRef.runId, {
+            phase: "completed",
+            output: outputText,
+          });
+          if (clientRef.current) {
+            clientRef.current.sendSystemUpdate(
+              `背景任务执行完毕。runId: ${taskRef.runId}\n\n执行结果如下：\n${outputText}\n\n请在用户空闲时，用第一人称、语音友好的方式主动完整汇报这次任务结果。`
+            );
+          }
+        },
+        onFailed: (e) => {
+          addLog(`[任务] 失败: ${e.error}`);
+          updateTask(taskRef.runId, { phase: "failed", error: e.error });
+        },
+        onCancelled: (e) => {
+          updateTask(taskRef.runId, { phase: "cancelled", error: e.reason });
+        },
+      });
+
       setTextInputValue("");
-      setShowTextInput(false);
+      if (!isTextInputPinned) {
+        setShowTextInput(false);
+      }
       showToast("任务已提交至后台");
     } catch (error) {
       console.error("Failed to submit text task:", error);
@@ -1580,9 +1658,9 @@ Note: If you output A2UI, return ONLY the JSON without any other text.`;
 
       <div className="relative flex-1 min-h-0 overflow-hidden reading-mode-content">
         <ScrollArea className="h-full w-full">
-          <div className="p-10 pb-40 max-w-4xl mx-auto">
+          <div className="p-10 pt-6 pb-40 max-w-4xl mx-auto">
             {activeTask ? (
-              <div className="space-y-10">
+              <div className="space-y-2">
                 {/* Unified Header Block */}
                 <div>
                   <h3 className="text-sm font-bold text-white leading-tight line-clamp-2">{activeTask.title}</h3>
@@ -1612,40 +1690,40 @@ Note: If you output A2UI, return ONLY the JSON without any other text.`;
 
                 {/* Output Content */}
                 {activeTask.output ? (
-                  <div className="w-full max-w-none wrap-break-word overflow-x-hidden font-sans">
-                    <AuraRenderer
-                      content={activeTask.output}
-                      onAction={(action, data) => handleTaskA2UIAction(activeTask.runId, action, data)}
-                    />
-                  </div>
-                ) : (activeTask.error || activeTask.phase === "cancelled" || activeTask.phase === "lost") ? (
-                  <div className={`rounded-lg p-6 border ${activeTask.phase === "cancelled"
-                      ? "bg-orange-500/10 text-orange-400 border-orange-500/20"
-                      : activeTask.phase === "lost"
-                        ? "bg-white/5 text-white/40 border-white/10"
-                        : "bg-destructive/10 text-destructive border-destructive/20"
-                    }`}>
-                    <div className="flex items-center gap-3 font-bold mb-2">
-                      {activeTask.phase === "lost" ? <HistoryIcon className="h-5 w-5" /> : <XCircle className="h-5 w-5" />}
-                      <span>{
-                        activeTask.phase === "cancelled" ? "任务已终止" :
-                          activeTask.phase === "lost" ? "任务状态丢失" :
-                            "执行失败"
-                      }</span>
+                    <div className="w-full max-w-none wrap-break-word overflow-x-hidden font-sans">
+                      <AuraRenderer
+                        content={activeTask.output}
+                        onAction={(action, data) => handleTaskA2UIAction(activeTask.runId, action, data)}
+                      />
                     </div>
-                    <p className="opacity-90">
-                      {activeTask.phase === "lost" ? "由于 Agent 连接异常中断，该任务已无法继续追踪。" : (activeTask.error || "未知错误")}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-32 text-center">
-                    <div className="h-16 w-16 rounded-3xl bg-primary/5 flex items-center justify-center mb-6 animate-pulse">
-                      <Sparkles className="h-8 w-8 text-primary/40" />
+                  ) : (activeTask.error || activeTask.phase === "cancelled" || activeTask.phase === "lost") ? (
+                    <div className={`rounded-lg p-6 border ${activeTask.phase === "cancelled"
+                        ? "bg-orange-500/10 text-orange-400 border-orange-500/20"
+                        : activeTask.phase === "lost"
+                          ? "bg-white/5 text-white/40 border-white/10"
+                          : "bg-destructive/10 text-destructive border-destructive/20"
+                      }`}>
+                      <div className="flex items-center gap-3 font-bold mb-2">
+                        {activeTask.phase === "lost" ? <HistoryIcon className="h-5 w-5" /> : <XCircle className="h-5 w-5" />}
+                        <span>{
+                          activeTask.phase === "cancelled" ? "任务已终止" :
+                            activeTask.phase === "lost" ? "任务状态丢失" :
+                              "执行失败"
+                        }</span>
+                      </div>
+                      <p className="opacity-90">
+                        {activeTask.phase === "lost" ? "由于 Agent 连接异常中断，该任务已无法继续追踪。" : (activeTask.error || "未知错误")}
+                      </p>
                     </div>
-                    <p className="text-sm font-medium text-white/20 tracking-[0.2em] uppercase">正在等待任务内容输出...</p>
-                  </div>
-                )}
-              </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-32 text-center">
+                      <div className="h-16 w-16 rounded-3xl bg-primary/5 flex items-center justify-center mb-6 animate-pulse">
+                        <Sparkles className="h-8 w-8 text-primary/40" />
+                      </div>
+                      <p className="text-sm font-medium text-white/20 tracking-[0.2em] uppercase">正在等待任务内容输出...</p>
+                    </div>
+                  )}
+                </div>
             ) : (
               <div className="flex flex-col items-center justify-center py-32 text-center text-white/20">
                 <Clock className="mb-4 h-12 w-12 opacity-50" />
@@ -1809,7 +1887,11 @@ Note: If you output A2UI, return ONLY the JSON without any other text.`;
               {providers.length > 0 && (
                 <div className="flex items-center gap-1.5">
                   <label className="relative">
-                    <Bot className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/40" />
+                    {isOnline ? (
+                      <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)] animate-pulse z-10" />
+                    ) : (
+                      <Bot className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/40 z-10" />
+                    )}
                     <select
                       disabled={isBusy || isConnected}
                       value={selectedProviderId}
@@ -1938,7 +2020,15 @@ Note: If you output A2UI, return ONLY the JSON without any other text.`;
               transition={{ duration: 0.2, ease: "easeOut" }}
               className="fixed bottom-24 left-1/2 z-50 w-full max-w-lg -translate-x-1/2 p-4"
             >
-              <div className="rounded-2xl border border-white/10 bg-[#19191e]/80 p-4 backdrop-blur-xl shadow-2xl shadow-black/50">
+              <div className="rounded-2xl border border-white/10 bg-[#19191e]/80 p-4 backdrop-blur-xl shadow-2xl shadow-black/50 relative">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setIsTextInputPinned(!isTextInputPinned)}
+                  className={`absolute top-2 right-2 h-6 w-6 rounded-full transition-colors ${isTextInputPinned ? "text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20" : "text-white/40 hover:text-white hover:bg-white/5"}`}
+                >
+                  {isTextInputPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+                </Button>
                 <textarea
                   value={textInputValue}
                   onChange={(e) => setTextInputValue(e.target.value)}
@@ -1970,7 +2060,13 @@ Note: If you output A2UI, return ONLY the JSON without any other text.`;
           onDisconnect={stopConversation}
           isBusy={isBusy}
           showTextInput={showTextInput}
-          onToggleTextInput={() => setShowTextInput(!showTextInput)}
+          onToggleTextInput={() => {
+            const next = !showTextInput;
+            setShowTextInput(next);
+            if (next) {
+              setIsTaskPinned(true);
+            }
+          }}
         />
 
 
