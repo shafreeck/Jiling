@@ -1183,7 +1183,7 @@ Note: If you output A2UI, return ONLY the JSON without any other text.`;
           const taskRef = await adapter.submitTask({
             identity: {
               systemName: "机灵",
-              runtimeRoleDescription: useCards ? jilingSkills : undefined,
+              runtimeRoleDescription: useCards ? jilingSkills : "",
               mode: "background_core",
               userFacingRole: "same_assistant"
             },
