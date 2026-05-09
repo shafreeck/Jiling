@@ -5,6 +5,7 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct TaskSnapshot {
     pub run_id: String,
+    pub provider_id: String,
     pub agent_id: String,
     pub status: String,
     pub message: String,
@@ -36,6 +37,7 @@ impl Db {
             "CREATE TABLE IF NOT EXISTS tasks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 run_id TEXT UNIQUE,
+                provider_id TEXT,
                 agent_id TEXT,
                 status TEXT, -- pending, submitted, running, completed, failed, cancelled, lost
                 message TEXT,
@@ -46,13 +48,16 @@ impl Db {
             [],
         )?;
 
+        // 尝试添加 provider_id 列
+        let _ = conn.execute("ALTER TABLE tasks ADD COLUMN provider_id TEXT", []);
+
         Ok(Db { conn })
     }
 
-    pub fn insert_task(&self, run_id: &str, agent_id: &str, message: &str) -> Result<()> {
+    pub fn insert_task(&self, run_id: &str, provider_id: &str, agent_id: &str, message: &str) -> Result<()> {
         self.conn.execute(
-            "INSERT INTO tasks (run_id, agent_id, status, message, output) VALUES (?, ?, 'submitted', ?, '')",
-            params![run_id, agent_id, message],
+            "INSERT INTO tasks (run_id, provider_id, agent_id, status, message, output) VALUES (?, ?, ?, 'submitted', ?, '')",
+            params![run_id, provider_id, agent_id, message],
         )?;
         Ok(())
     }
@@ -95,17 +100,18 @@ impl Db {
 
     pub fn get_task_snapshot(&self, run_id: &str) -> Result<TaskSnapshot> {
         self.conn.query_row(
-            "SELECT run_id, agent_id, status, message, output, created_at, updated_at FROM tasks WHERE run_id = ?",
+            "SELECT run_id, provider_id, agent_id, status, message, output, created_at, updated_at FROM tasks WHERE run_id = ?",
             params![run_id],
             |row| {
                 Ok(TaskSnapshot {
                     run_id: row.get(0)?,
-                    agent_id: row.get(1)?,
-                    status: row.get(2)?,
-                    message: row.get(3)?,
-                    output: row.get(4)?,
-                    created_at: row.get(5)?,
-                    updated_at: row.get(6)?,
+                    provider_id: row.get(1)?,
+                    agent_id: row.get(2)?,
+                    status: row.get(3)?,
+                    message: row.get(4)?,
+                    output: row.get(5)?,
+                    created_at: row.get(6)?,
+                    updated_at: row.get(7)?,
                 })
             },
         )
@@ -113,17 +119,18 @@ impl Db {
 
     pub fn get_all_tasks(&self) -> Result<Vec<TaskSnapshot>> {
         let mut stmt = self.conn.prepare(
-            "SELECT run_id, agent_id, status, message, output, created_at, updated_at FROM tasks ORDER BY created_at DESC"
+            "SELECT run_id, provider_id, agent_id, status, message, output, created_at, updated_at FROM tasks ORDER BY created_at DESC"
         )?;
         let task_iter = stmt.query_map([], |row| {
             Ok(TaskSnapshot {
                 run_id: row.get(0)?,
-                agent_id: row.get(1)?,
-                status: row.get(2)?,
-                message: row.get(3)?,
-                output: row.get(4)?,
-                created_at: row.get(5)?,
-                updated_at: row.get(6)?,
+                provider_id: row.get(1)?,
+                agent_id: row.get(2)?,
+                status: row.get(3)?,
+                message: row.get(4)?,
+                output: row.get(5)?,
+                created_at: row.get(6)?,
+                updated_at: row.get(7)?,
             })
         })?;
 

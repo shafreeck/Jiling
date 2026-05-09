@@ -455,7 +455,7 @@ export default function JilingPage() {
         const mappedTasks: AgentTaskView[] = history.map(t => ({
           runId: t.run_id,
           title: t.message,
-          providerName: t.agent_id,
+          providerName: t.provider_id,
           phase: (t.status === "end" || t.status === "completed") ? "completed" : t.status as AgentTaskPhase,
           startedAt: new Date(t.created_at).getTime(),
           updatedAt: new Date(t.updated_at).getTime(),
