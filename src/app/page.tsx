@@ -910,6 +910,7 @@ export default function JilingPage() {
       }
 
       const client = createClient(profile);
+      client.voiceName = selectedVoice; // 同步当前选中的声音
       clientRef.current = client;
       reconnectWantedRef.current = true;
       await client.connect();
@@ -1221,10 +1222,10 @@ export default function JilingPage() {
   };
 
   const clearSessionHandle = () => {
-    if (confirm("确定要擦除当前智能体的记忆（Session Handle）吗？这会导致下一次连接变为全新会话。")) {
-      GeminiLiveClient.clearStoredHandle(selectedProviderId);
-      addLog(`[系统] 已擦除 ${selectedProviderId} 的记忆 Handle`);
-    }
+    const pId = selectedProviderIdRef.current;
+    if (!pId) return;
+    GeminiLiveClient.clearStoredHandle(pId);
+    addLog(`[系统] 已擦除 ${pId} 的会话记忆。下次连接将开始新对话。`);
   };
 
   useEffect(() => {
