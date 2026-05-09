@@ -728,7 +728,7 @@ export default function JilingPage() {
           });
           if (clientRef.current) {
             clientRef.current.sendSystemUpdate(
-              `背景任务执行完毕。runId: ${taskRef.runId}\n\n执行结果如下：\n${outputText}\n\n请在用户空闲时，用第一人称、语音友好的方式主动完整汇报这次任务结果。`
+              `Background task completed. runId: ${taskRef.runId}\n\nExecution results are as follows:\n${outputText}\n\nPlease actively and completely report this task result in the first person and a voice-friendly manner when the user is idle.`
             );
           }
         },
@@ -1359,7 +1359,7 @@ Note: If you output A2UI, return ONLY the JSON without any other text.`;
                 output: outputText,
               });
               clientRef.current?.sendSystemUpdate(
-                `背景任务执行完毕。runId: ${taskRef.runId}\n\n执行结果如下：\n${outputText}\n\n请在用户空闲时，用第一人称、语音友好的方式主动完整汇报这次任务结果。不要只做一句话简略总结，保留关键细节、结论、文件变更、验证结果和后续建议。`
+                `Background task completed. runId: ${taskRef.runId}\n\nExecution results are as follows:\n${outputText}\n\nPlease actively and completely report this task result in the first person and a voice-friendly manner when the user is idle. Do not just give a one-sentence brief summary; keep key details, conclusions, file changes, verification results, and follow-up suggestions.`
               );
             },
             onFailed: (e) => {
