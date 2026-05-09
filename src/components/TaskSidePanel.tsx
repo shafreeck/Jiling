@@ -29,6 +29,7 @@ interface TaskSidePanelProps {
   onSelectTask: (id: string) => void;
   isPinned: boolean;
   onTogglePin: () => void;
+  onAbortTask: (runId: string) => void;
 }
 
 export function TaskSidePanel({
@@ -38,7 +39,8 @@ export function TaskSidePanel({
   selectedTaskId,
   onSelectTask,
   isPinned,
-  onTogglePin
+  onTogglePin,
+  onAbortTask
 }: TaskSidePanelProps) {
   const selectedTask = tasks.find(t => t.runId === selectedTaskId);
 
@@ -128,19 +130,32 @@ export function TaskSidePanel({
                             <TaskStatusBadge phase={selectedTask.phase} />
                             <span className="text-xs text-white/40">{selectedTask.providerName}</span>
                           </div>
-                          <Button 
-                            variant="secondary" 
-                            size="sm" 
-                            onClick={onTogglePin}
-                            className={`h-7 px-2.5 rounded-lg text-[10px] font-medium border transition-all ${
-                              isPinned 
-                                ? "bg-primary/20 text-primary border-primary/30 hover:bg-primary/30" 
-                                : "bg-white/5 text-white/70 border-white/10 hover:bg-white/15 hover:text-white"
-                            }`}
-                          >
-                            {isPinned ? <PinOff className="h-3 w-3" /> : <Pin className="h-3 w-3" />}
-                            {isPinned ? "取消固定" : "固定显示"}
-                          </Button>
+                          <div className="flex items-center gap-2">
+                            {(selectedTask.phase === "running" || selectedTask.phase === "submitted") && (
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                onClick={() => onAbortTask(selectedTask.runId)}
+                                className="h-7 px-2.5 rounded-lg text-[10px] font-medium text-destructive hover:bg-destructive/10 hover:text-destructive border border-transparent hover:border-destructive/20 transition-all"
+                              >
+                                <XCircle className="h-3 w-3 mr-1" />
+                                终止任务
+                              </Button>
+                            )}
+                            <Button 
+                              variant="secondary" 
+                              size="sm" 
+                              onClick={onTogglePin}
+                              className={`h-7 px-2.5 rounded-lg text-[10px] font-medium border transition-all ${
+                                isPinned 
+                                  ? "bg-primary/20 text-primary border-primary/30 hover:bg-primary/30" 
+                                  : "bg-white/5 text-white/70 border-white/10 hover:bg-white/15 hover:text-white"
+                              }`}
+                            >
+                              {isPinned ? <PinOff className="h-3 w-3" /> : <Pin className="h-3 w-3" />}
+                              {isPinned ? "取消固定" : "固定显示"}
+                            </Button>
+                          </div>
                         </div>
                       </div>
 

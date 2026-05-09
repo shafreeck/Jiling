@@ -1228,6 +1228,18 @@ export default function JilingPage() {
     addLog(`[系统] 已擦除 ${pId} 的会话记忆。下次连接将开始新对话。`);
   };
 
+  const handleAbortTask = async (runId: string) => {
+    try {
+      await invoke("abort_agent_task", { runId });
+      addLog(`[任务] 已发送终止请求: ${runId}`);
+      setAgentTasks(prev => prev.map(t => 
+        t.runId === runId ? { ...t, phase: "failed", error: "已手动终止" } : t
+      ));
+    } catch (error: unknown) {
+      addLog(`[任务] 终止失败: ${errorMessage(error)}`);
+    }
+  };
+
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: "auto" });
   }, [logs]);
@@ -1566,6 +1578,7 @@ export default function JilingPage() {
           }
           setIsTaskPinned(!isTaskPinned);
         }}
+        onAbortTask={handleAbortTask}
       />
 
       {/* Settings Dialog */}
