@@ -1,5 +1,6 @@
 "use client";
 
+import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, ListChecks, History, ChevronRight, ChevronDown, Terminal, Activity, CheckCircle2, XCircle, Clock, Pin, PinOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -43,6 +44,51 @@ export function TaskSidePanel({
   onAbortTask
 }: TaskSidePanelProps) {
   const selectedTask = tasks.find(t => t.runId === selectedTaskId);
+  
+  // Resizable state with persistence and responsiveness
+  const [width, setWidth] = useState(768);
+  const [isResizing, setIsResizing] = useState(false);
+
+  // Initialize width on mount and load from localStorage
+  useEffect(() => {
+    const savedWidth = localStorage.getItem("task-panel-width");
+    const initialWidth = savedWidth ? parseInt(savedWidth) : 768;
+    // Ensure default doesn't exceed screen width
+    setWidth(Math.min(initialWidth, window.innerWidth * 0.9));
+  }, []);
+
+  const startResizing = useCallback((e: React.MouseEvent) => {
+    setIsResizing(true);
+    e.preventDefault();
+  }, []);
+
+  const stopResizing = useCallback(() => {
+    setIsResizing(false);
+    localStorage.setItem("task-panel-width", width.toString());
+  }, [width]);
+
+  const resize = useCallback((e: MouseEvent) => {
+    if (isResizing) {
+      const newWidth = window.innerWidth - e.clientX;
+      if (newWidth > 320 && newWidth < window.innerWidth * 0.98) {
+        setWidth(newWidth);
+      }
+    }
+  }, [isResizing]);
+
+  useEffect(() => {
+    if (isResizing) {
+      window.addEventListener("mousemove", resize);
+      window.addEventListener("mouseup", stopResizing);
+    } else {
+      window.removeEventListener("mousemove", resize);
+      window.removeEventListener("mouseup", stopResizing);
+    }
+    return () => {
+      window.removeEventListener("mousemove", resize);
+      window.removeEventListener("mouseup", stopResizing);
+    };
+  }, [isResizing, resize, stopResizing]);
 
   const cleanText = (text: string) => text;
 
@@ -59,19 +105,44 @@ export function TaskSidePanel({
             style={{ zIndex: 999 }}
           />
           <motion.div
-            initial={{ x: "100%" }}
-            animate={{ x: 0 }}
-            exit={{ x: "100%" }}
-            transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className="fixed right-0 top-0 h-full w-full max-w-3xl border-l border-white/10 bg-black/80 backdrop-blur-2xl shadow-2xl flex flex-col"
-            style={{ zIndex: 1000 }}
+            initial={{ right: -width }}
+            animate={{ right: 0 }}
+            exit={{ right: -width }}
+            transition={{ type: "spring", damping: 30, stiffness: 300 }}
+            className="fixed top-0 h-full border-l border-white/10 bg-black/80 backdrop-blur-2xl shadow-2xl flex flex-col overflow-hidden"
+            style={{ 
+              zIndex: 1000, 
+              width: `${width}px`,
+              right: 0
+            }}
           >
+            <style dangerouslySetInnerHTML={{ __html: `
+              .task-side-panel ::selection {
+                background-color: rgba(59, 130, 246, 0.4) !important;
+              }
+              .task-side-panel *::selection {
+                background-color: rgba(59, 130, 246, 0.4) !important;
+              }
+            ` }} />
+            <div className="task-side-panel flex flex-col h-full w-full">
+            {/* Resize Handle */}
+            <div
+              onMouseDown={startResizing}
+              className={`absolute left-0 top-0 bottom-0 w-2 cursor-col-resize z-50 transition-colors ${
+                isResizing ? "bg-primary/50" : "hover:bg-primary/20"
+              }`}
+            />
             <div className="flex items-center justify-between border-b border-white/10 p-4">
               <div className="flex items-center gap-2 font-semibold text-white">
                 <ListChecks className="h-5 w-5 text-primary" />
                 <span>任务管理</span>
               </div>
-              <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full text-white/60 hover:text-white mr-2">
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={onClose} 
+                className="rounded-full text-white/60 hover:bg-white/10 hover:text-white transition-colors mr-2"
+              >
                 <X className="h-5 w-5" />
               </Button>
             </div>
@@ -120,8 +191,8 @@ export function TaskSidePanel({
               {selectedTask && (
                 <div className="flex flex-1 flex-col h-full min-h-0 bg-white/2">
                   <ScrollArea className="h-full">
-                    <div className="p-6 space-y-6">
-                      <div className="space-y-4">
+                    <div className="p-10 pb-32 space-y-8">
+                      <div className="space-y-6">
                         <div>
                           <div className="flex items-center justify-between gap-4">
                             <h3 className="text-sm font-bold text-white leading-tight line-clamp-2 flex-1">{selectedTask.title}</h3>
@@ -169,17 +240,54 @@ export function TaskSidePanel({
                       </div>
 
                       {selectedTask.output ? (
-                        <div className="prose prose-invert prose-xs max-w-none wrap-break-word overflow-x-hidden
-                          prose-headings:text-white prose-headings:font-bold prose-headings:tracking-tight prose-headings:mb-2 prose-headings:mt-4 prose-headings:wrap-break-word
-                          prose-h1:text-base prose-h2:text-sm prose-h3:text-xs
-                          prose-p:text-white/70 prose-p:leading-relaxed prose-p:my-1.5 prose-p:text-[10.5px] prose-p:wrap-break-word
-                          prose-strong:text-white prose-li:text-[10.5px] prose-li:text-white/70
-                          prose-table:w-full prose-table:border-collapse prose-table:my-4 prose-table:table-fixed
-                          prose-th:bg-white/5 prose-th:p-2 prose-th:text-left prose-th:text-[10px] prose-th:font-bold prose-th:text-white/40 prose-th:uppercase prose-th:tracking-wider
-                          prose-td:p-2 prose-td:border-t prose-td:border-white/5 prose-td:text-white/80 prose-td:text-[10.5px] prose-td:break-all
-                          selection:bg-primary/30 font-sans"
-                        >
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{cleanText(selectedTask.output)}</ReactMarkdown>
+                        <div className="w-full max-w-none wrap-break-word overflow-x-hidden font-sans">
+                          <ReactMarkdown 
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                              h1: ({node, ...props}) => <h1 className="text-xl font-bold text-white mt-6 mb-3 tracking-tight" {...props} />,
+                              h2: ({node, ...props}) => <h2 className="text-lg font-bold text-white mt-5 mb-2.5 tracking-tight" {...props} />,
+                              h3: ({node, ...props}) => <h3 className="text-base font-bold text-white mt-4 mb-2 tracking-tight" {...props} />,
+                              p: ({node, ...props}) => <div className="text-[13px] leading-6 text-white/80 my-3 wrap-break-word" {...props} />,
+                              strong: ({node, ...props}) => <strong className="font-bold text-white" {...props} />,
+                              em: ({node, ...props}) => <em className="italic text-white/70" {...props} />,
+                              ul: ({node, ...props}) => <ul className="list-disc pl-5 my-3 space-y-1.5" {...props} />,
+                              ol: ({node, ...props}) => <ol className="list-decimal pl-5 my-3 space-y-1.5" {...props} />,
+                              li: ({node, ...props}) => <li className="text-[13px] text-white/80" {...props} />,
+                              code: ({node, inline, ...props}: any) => {
+                                const content = String(props.children).replace(/\n$/, "");
+                                const isMultiline = content.includes("\n");
+                                
+                                if (inline) {
+                                  return <code className="bg-white/10 text-white/90 px-1.5 py-0.5 rounded-md text-[11px] font-mono" {...props} />;
+                                }
+
+                                if (!isMultiline) {
+                                  return (
+                                    <div className="inline-flex items-center bg-white/10 text-white/90 px-3 py-1 rounded-lg border border-white/10 font-mono text-[11px] my-1">
+                                      <code {...props} />
+                                    </div>
+                                  );
+                                }
+
+                                return (
+                                  <div className="bg-white/5 p-4 rounded-xl overflow-x-auto my-4 border border-white/10 font-mono whitespace-pre text-[12px] text-white/90">
+                                    <code {...props} />
+                                  </div>
+                                );
+                              },
+                              table: ({node, ...props}) => (
+                                <div className="my-6 rounded-xl border border-white/10 overflow-hidden bg-white/2 shadow-xl">
+                                  <table className="w-full border-collapse border-spacing-0" {...props} />
+                                </div>
+                              ),
+                              thead: ({node, ...props}) => <thead className="bg-white/5 border-b border-white/10" {...props} />,
+                              th: ({node, ...props}) => <th className="p-3 text-left text-[12px] font-bold text-white uppercase tracking-wider" {...props} />,
+                              td: ({node, ...props}) => <td className="p-3 border-b border-white/5 text-[13px] text-white/80 align-top" {...props} />,
+                              blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-primary/40 pl-4 italic text-white/60 my-4" {...props} />,
+                            }}
+                          >
+                            {cleanText(selectedTask.output)}
+                          </ReactMarkdown>
                         </div>
                       ) : selectedTask.error ? (
                         <div className="rounded-lg bg-destructive/10 p-4 text-sm text-destructive border border-destructive/20">
@@ -209,6 +317,7 @@ export function TaskSidePanel({
                   </ScrollArea>
                 </div>
               )}
+            </div>
             </div>
           </motion.div>
         </>
