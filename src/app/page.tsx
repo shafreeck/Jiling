@@ -1163,7 +1163,9 @@ export default function JilingPage() {
           const adapter = adapterRef.current;
           const selectedProvider = providers.find((provider) => provider.id === selectedProviderIdRef.current);
           const taskText = String(callArgs.task || "");
-          const jilingSkills = `\n\n## Jiling A2UI\nIf the task requires interactive UI (approvals, code reviews), you MUST return ONLY the standard A2UI JSON as your final output. 
+          const jilingSkills = `\n\n## Jiling A2UI
+For tasks requiring structured visualization or approval (like lists, charts, approvals), you can return the standard A2UI JSON. For normal conversation or simple answers, use standard Markdown. Do not use cards unnecessarily.
+
 Available components:
 - "ApprovalCard": For task approvals or confirmations. Props: { "title": string, "description": string, "severity": "info"|"warning"|"critical", "actionLabel": string }. Note: "description" supports Markdown (tables, formatting).
 - "CodeReviewCard": For code reviews. Props: { "files": Array<{ "filename": string, "content": string, "language": string }> }
@@ -1172,7 +1174,8 @@ Available components:
 - "TaskListCard": For displaying lists of tasks. Props: { "title": string, "tasks": Array<{ "id": string, "title": string, "completed": boolean, "description"?: string, "cancelled"?: boolean }> }
 - "CanvasCard": For displaying topology graphs (mind maps, task flows). Props: { "nodes": Array<{ "id": string, "label": string, "status": "processing"|"success"|"error", "size"?: "small"|"medium"|"large" }>, "links": Array<{ "source": string, "target": string, "label"?: string }> }
 
-Output format: { "type": "a2ui", "requestId": "unique_id", "payload": { "component": "ComponentName", "props": {...} } }`;
+Output format: { "type": "a2ui", "requestId": "unique_id", "summary": "A human-readable summary of the card (for logs and voice fallback)", "payload": { "component": "ComponentName", "props": {...} } }
+Note: If you output A2UI, return ONLY the JSON without any other text.`;
 
           const taskRef = await adapter.submitTask({
             identity: {
