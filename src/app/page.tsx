@@ -1859,7 +1859,7 @@ Note: If you output A2UI, return ONLY the JSON without any other text.`;
               size="icon"
               onClick={() => setEnableA2UI(!enableA2UI)}
               className={`h-10 w-10 rounded-full border backdrop-blur-md transition-all duration-300 [app-region:no-drag] ${enableA2UI
-                ? "bg-emerald-500! text-black! border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.2)] scale-110"
+                ? "bg-white! text-black! border-white shadow-[0_0_20px_rgba(255,255,255,0.3)] scale-110"
                 : "bg-white/5 text-white/60 border-white/10 hover:bg-white/10 hover:text-white"
                 }`}
               title={enableA2UI ? "已启用 A2UI 卡片" : "已禁用 A2UI 卡片"}
