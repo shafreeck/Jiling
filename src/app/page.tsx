@@ -1193,7 +1193,7 @@ Output format: { "type": "a2ui", "requestId": "unique_id", "payload": { "compone
           upsertTask({
             runId: taskRef.runId,
             title: taskTitleFromRequest(taskText),
-            providerName: providerLabel(selectedProvider?.id, selectedProvider?.name || profileRef.current?.displayName || taskRef.providerId),
+            providerName: selectedProvider?.id || taskRef.providerId,
             phase: "submitted",
             startedAt: Date.now(),
             updatedAt: Date.now(),
@@ -2057,10 +2057,10 @@ Output format: { "type": "a2ui", "requestId": "unique_id", "payload": { "compone
                 </div>
 
                 <div className="p-3 bg-white/2 border-t border-white/5 flex items-center justify-between">
-                  <span className="text-[10px] text-white/30 truncate max-w-[200px]">来自: {activeA2UITask.title}</span>
+                  <span className="text-[10px] text-white/50 truncate max-w-[200px]">来自: {activeA2UITask.title}</span>
                   <Button
                     variant="link"
-                    className="h-auto p-0 text-[10px] text-primary hover:text-primary/80"
+                    className="h-auto p-0 text-[10px] text-emerald-500 hover:text-emerald-400 transition-colors"
                     onClick={() => {
                       setSelectedTaskId(activeA2UITask.runId);
                       setIsSidePanelOpen(true);
