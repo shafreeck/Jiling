@@ -135,7 +135,10 @@ Available Components:
 - "CanvasCard": For displaying topology graphs (mind maps, task flows). Props: { "nodes": Array<{ "id": string, "label": string, "status": "processing"|"success"|"error", "size"?: "small"|"medium"|"large" }>, "links": Array<{ "source": string, "target": string, "label"?: string }> }
 `;
 
-    const systemInstruction = `${task.identity.runtimeRoleDescription || ""}\n\n${a2uiDocs}`;
+    // Avoid duplicating A2UI docs if backend already provides them
+    const systemInstruction = task.identity.runtimeRoleDescription?.includes('ApprovalCard')
+      ? `${task.identity.runtimeRoleDescription}\n\n## Additional A2UI Components\n- "ChartCard": For displaying charts. Props: { "title": string, "type": "line"|"bar", "data": Array<{ "label": string, "value": number }>, "color"?: string }\n- "TaskListCard": For displaying lists of tasks. Props: { "title": string, "tasks": Array<{ "id": string, "title": string, "completed": boolean, "description"?: string, "cancelled"?: boolean }> }\n- "CanvasCard": For displaying topology graphs (mind maps, task flows). Props: { "nodes": Array<{ "id": string, "label": string, "status": "processing"|"success"|"error", "size"?: "small"|"medium"|"large" }>, "links": Array<{ "source": string, "target": string, "label"?: string }> }`
+      : `${task.identity.runtimeRoleDescription || ""}\n\n${a2uiDocs}`;
 
     const runId = await invoke<string>("execute_agent_acp_task", {
       providerId: this.id,

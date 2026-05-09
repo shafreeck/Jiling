@@ -86,8 +86,11 @@ const CanvasCard = ({ nodes, links }: CanvasCardProps) => {
         }).filter(link => link.sourceNode && link.targetNode);
 
         let animationFrameId: number;
+        let alpha = 1.0; // Cooling factor
 
         const updatePhysics = () => {
+            if (alpha < 0.01) return; // Stop simulation when cooled down
+
             const k = 0.05; // Spring constant
             const length = 100; // Desired link length
             const repulsion = 1000; // Repulsion force
@@ -101,7 +104,7 @@ const CanvasCard = ({ nodes, links }: CanvasCardProps) => {
                     const dy = nodeB.y - nodeA.y;
                     const distance = Math.sqrt(dx * dx + dy * dy) || 1;
                     
-                    const force = repulsion / (distance * distance);
+                    const force = (repulsion / (distance * distance)) * alpha;
                     const fx = (dx / distance) * force;
                     const fy = (dy / distance) * force;
 
@@ -120,7 +123,7 @@ const CanvasCard = ({ nodes, links }: CanvasCardProps) => {
                 const dy = nodeB.y - nodeA.y;
                 const distance = Math.sqrt(dx * dx + dy * dy) || 1;
                 
-                const force = k * (distance - length);
+                const force = k * (distance - length) * alpha;
                 const fx = (dx / distance) * force;
                 const fy = (dy / distance) * force;
 
@@ -136,19 +139,21 @@ const CanvasCard = ({ nodes, links }: CanvasCardProps) => {
             
             for (const node of physicsNodes) {
                 // Gravity to center
-                node.vx += (centerX - node.x) * 0.01;
-                node.vy += (centerY - node.y) * 0.01;
+                node.vx += (centerX - node.x) * 0.01 * alpha;
+                node.vy += (centerY - node.y) * 0.01 * alpha;
 
                 // Apply velocity and friction
                 node.x += node.vx;
                 node.y += node.vy;
-                node.vx *= 0.8; // Friction
-                node.vy *= 0.8;
+                node.vx *= 0.6; // Increased friction to stop faster
+                node.vy *= 0.6;
 
                 // Boundary constraints
                 node.x = Math.max(node.radius, Math.min(dimensions.width - node.radius, node.x));
                 node.y = Math.max(node.radius, Math.min(dimensions.height - node.radius, node.y));
             }
+
+            alpha *= 0.95; // Cool down
         };
 
         const draw = (timestamp: number) => {
@@ -211,9 +216,11 @@ const CanvasCard = ({ nodes, links }: CanvasCardProps) => {
                 if (node.status === 'success') {
                     strokeColor = '#10b981'; // Green
                     glowColor = 'rgba(16, 185, 129, 0.3)';
+                    fillColor = 'rgba(16, 185, 129, 0.15)'; // Subtle green fill
                 } else if (node.status === 'processing') {
                     strokeColor = '#3b82f6'; // Blue
                     glowColor = 'rgba(59, 130, 246, 0.3)';
+                    fillColor = 'rgba(59, 130, 246, 0.15)'; // Subtle blue fill
                     
                     // Draw rotating dashed ring for processing
                     ctx.save();
@@ -229,6 +236,7 @@ const CanvasCard = ({ nodes, links }: CanvasCardProps) => {
                 } else if (node.status === 'error') {
                     strokeColor = '#ef4444'; // Red
                     glowColor = 'rgba(239, 68, 68, 0.3)';
+                    fillColor = 'rgba(239, 68, 68, 0.15)'; // Subtle red fill
                 }
 
                 ctx.fillStyle = fillColor;
