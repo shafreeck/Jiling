@@ -140,6 +140,7 @@ ${this.profile.userContext ? `<USER>\n${this.profile.userContext}\n</USER>\n` : 
         },
         inputAudioTranscription: {},
         outputAudioTranscription: {},
+        contextWindowCompression: { slidingWindow: {} },
         sessionResumption: handle ? { handle } : {},
         systemInstruction: {
           parts: [{ text: systemInstructionText }],
