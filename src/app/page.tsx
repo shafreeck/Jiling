@@ -1954,9 +1954,30 @@ Note: If you output A2UI, return ONLY the JSON without any other text.`;
                     placeholder={apiKeyConfigured ? "已配置 (留空保留当前密钥)" : "输入你的 Gemini API Key"}
                     className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm outline-none transition focus:border-primary/50 focus:bg-white/10"
                   />
-                  <div className="mt-2 p-4 rounded-xl bg-white/3 border border-white/5 text-[11px] text-white/50 leading-relaxed italic whitespace-pre-wrap wrap-break-word overflow-hidden">
-                    {settingsError && <p className="text-xs text-destructive">{settingsError}</p>}
+                  {settingsError && (
+                    <div className="mt-2 p-4 rounded-xl bg-white/3 border border-white/5 text-[11px] text-white/50 leading-relaxed italic whitespace-pre-wrap wrap-break-word overflow-hidden">
+                      <p className="text-xs text-destructive">{settingsError}</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/10">
+                  <div>
+                    <label className="text-sm font-medium text-white">启用 A2UI 卡片</label>
+                    <p className="text-xs text-white/50">关闭后将不展示任何毛玻璃卡片</p>
                   </div>
+                  <button
+                    onClick={() => setEnableA2UI(!enableA2UI)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+                      enableA2UI ? "bg-emerald-500" : "bg-white/10"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        enableA2UI ? "translate-x-6" : "translate-x-1"
+                      }`}
+                    />
+                  </button>
                 </div>
 
                 <div className="flex gap-3 pt-4">
