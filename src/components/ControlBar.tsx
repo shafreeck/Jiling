@@ -13,7 +13,8 @@ import {
   AudioLines,
   X,
   PhoneOff,
-  MoreVertical
+  MoreVertical,
+  Keyboard
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { 
@@ -36,6 +37,8 @@ interface ControlBarProps {
   onConnect: () => void;
   onDisconnect: () => void;
   isBusy?: boolean;
+  showTextInput: boolean;
+  onToggleTextInput: () => void;
 }
 
 export function ControlBar({
@@ -50,7 +53,9 @@ export function ControlBar({
   isConnected,
   onConnect,
   onDisconnect,
-  isBusy
+  isBusy,
+  showTextInput,
+  onToggleTextInput
 }: ControlBarProps) {
   return (
     <TooltipProvider>
@@ -131,6 +136,24 @@ export function ControlBar({
             }
           />
           <TooltipContent><p>{showTranscript ? "隐藏字幕" : "显示字幕"}</p></TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger 
+            render={
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onToggleTextInput}
+                className={`h-12 w-12 rounded-full transition-all ${
+                  showTextInput ? "bg-white/20 text-white" : "hover:bg-white/10 text-white/60"
+                }`}
+              >
+                <Keyboard className="h-5 w-5" />
+              </Button>
+            }
+          />
+          <TooltipContent><p>{showTextInput ? "关闭输入" : "文字输入"}</p></TooltipContent>
         </Tooltip>
 
         <Tooltip>

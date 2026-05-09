@@ -403,7 +403,21 @@ export default function JilingPage() {
 
   const [focusMode, setFocusMode] = useState(true);
   const [enableA2UI, setEnableA2UI] = useState(true);
+  const [showTextInput, setShowTextInput] = useState(false);
+  const [textInputValue, setTextInputValue] = useState("");
   const [showLogs, setShowLogs] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowTextInput((prev) => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
   const [toast, setToast] = useState<{ message: string; type: "info" | "error" } | null>(null);
 
   const showToast = (message: string, type: "info" | "error" = "info") => {
@@ -613,6 +627,52 @@ export default function JilingPage() {
       if (timer) clearInterval(timer);
     };
   }, [isConnected, isVideoOn, isSharing]);
+
+  const handleTextInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmitText();
+    }
+  };
+
+  const handleSubmitText = async () => {
+    if (!textInputValue.trim()) return;
+    
+    const adapter = adapterRef.current;
+    if (!adapter) return;
+
+    try {
+      const taskRef = await adapter.submitTask({
+        identity: {
+          systemName: "机灵",
+          runtimeRoleDescription: "", 
+          mode: "background_core",
+          userFacingRole: "same_assistant"
+        },
+        userRequest: textInputValue,
+        conversationContext: { recentUserIntent: textInputValue, locale: selectedLanguage },
+        executionPolicy: { askBeforeRiskyChanges: true, preferConciseProgress: false, produceSpeakableSummary: true },
+        outputContract: { format: "markdown_with_titles", requireSpeakableSummary: true, requireSpokenReport: true },
+      });
+
+      upsertTask({
+        runId: taskRef.runId,
+        title: taskTitleFromRequest(textInputValue),
+        providerName: selectedProviderId || taskRef.providerId,
+        phase: "submitted",
+        startedAt: Date.now(),
+        updatedAt: Date.now(),
+        progress: [],
+      });
+
+      setTextInputValue("");
+      setShowTextInput(false);
+      showToast("任务已提交至后台");
+    } catch (error) {
+      console.error("Failed to submit text task:", error);
+      showToast("提交任务失败", "error");
+    }
+  };
 
   const handleToggleVideo = async () => {
     if (isVideoOn) {
@@ -1869,6 +1929,33 @@ Note: If you output A2UI, return ONLY the JSON without any other text.`;
           </div>
         </header>
 
+          <AnimatePresence>
+          {showTextInput && (
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.95 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="fixed bottom-24 left-1/2 z-50 w-full max-w-lg -translate-x-1/2 p-4"
+            >
+              <div className="rounded-2xl border border-white/10 bg-[#19191e]/80 p-4 backdrop-blur-xl shadow-2xl shadow-black/50">
+                <textarea
+                  value={textInputValue}
+                  onChange={(e) => setTextInputValue(e.target.value)}
+                  onKeyDown={handleTextInputKeyDown}
+                  placeholder="键入指令，按 Enter 直接派发给 Agent，Shift+Enter 换行..."
+                  className="w-full h-32 bg-transparent text-white placeholder-white/30 outline-none resize-none text-sm leading-relaxed"
+                  autoFocus
+                />
+                <div className="mt-2 flex justify-between items-center text-xs text-white/40">
+                  <span>支持 Shift + Enter 换行</span>
+                  <span>按 Enter 发送</span>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <ControlBar
           isMuted={isMuted}
           onToggleMute={() => setIsMuted(!isMuted)}
@@ -1882,6 +1969,8 @@ Note: If you output A2UI, return ONLY the JSON without any other text.`;
           onConnect={startConversation}
           onDisconnect={stopConversation}
           isBusy={isBusy}
+          showTextInput={showTextInput}
+          onToggleTextInput={() => setShowTextInput(!showTextInput)}
         />
 
 
