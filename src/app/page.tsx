@@ -28,11 +28,13 @@ import {
   Maximize2,
   Languages,
   XCircle,
+  History as HistoryIcon,
 } from "lucide-react";
+import { AuraRenderer } from "@/components/AuraRenderer";
 import { motion, AnimatePresence } from "framer-motion";
 import { SmartOrb } from "@/components/SmartOrb";
 import { Button } from "@/components/ui/button";
-import { 
+import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -52,7 +54,7 @@ import { TaskOutputOverlay } from "@/components/TaskOutputOverlay";
 
 type VoiceStatus = "idle" | "listening" | "thinking" | "speaking";
 type ToolCall = NonNullable<LiveMessage["toolCall"]>;
-type AgentTaskPhase = "submitted" | "running" | "completed" | "failed" | "cancelled";
+type AgentTaskPhase = "submitted" | "running" | "completed" | "failed" | "cancelled" | "lost";
 
 type ApiKeyStatus = {
   configured: boolean;
@@ -333,18 +335,18 @@ class AudioStreamer {
 function playReadySound(context: AudioContext) {
   const osc = context.createOscillator();
   const gain = context.createGain();
-  
+
   osc.type = "sine";
   osc.frequency.setValueAtTime(523.25, context.currentTime); // C5
   osc.frequency.exponentialRampToValueAtTime(880, context.currentTime + 0.12); // A5
-  
+
   gain.gain.setValueAtTime(0, context.currentTime);
   gain.gain.linearRampToValueAtTime(0.2, context.currentTime + 0.05);
   gain.gain.exponentialRampToValueAtTime(0.01, context.currentTime + 0.3);
-  
+
   osc.connect(gain);
   gain.connect(context.destination);
-  
+
   osc.start();
   osc.stop(context.currentTime + 0.3);
 }
@@ -428,14 +430,14 @@ export default function JilingPage() {
   const [apiKeyConfigured, setApiKeyConfigured] = useState<boolean | null>(null);
   const [apiKeySource, setApiKeySource] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
-  
+
   const activeTask = useMemo(() => {
     return agentTasks.find((task) => task.runId === selectedTaskId) || agentTasks[0];
   }, [agentTasks, selectedTaskId]);
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
-  
+
   // New UI states
   const [transcript, setTranscript] = useState<TranscriptMessage[]>([]);
   const [showTranscript, setShowTranscript] = useState(true);
@@ -580,7 +582,7 @@ export default function JilingPage() {
         const client = clientRef.current;
 
         if (!canvas || !video || !client) return;
-        
+
         // Ensure video is actually playing and has dimensions
         if (video.paused || video.ended || video.readyState < 2) return;
 
@@ -592,7 +594,7 @@ export default function JilingPage() {
           canvas.width = 640;
           canvas.height = 480;
         }
-        
+
         try {
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
           const base64 = canvas.toDataURL("image/jpeg", 0.6).split(",")[1];
@@ -617,9 +619,9 @@ export default function JilingPage() {
     } else {
       try {
         if (isSharing) stopVideoStream(); // Stop sharing if active
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { width: 1280, height: 720 }, 
-          audio: false 
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 1280, height: 720 },
+          audio: false
         });
         videoStreamRef.current = stream;
         setIsVideoOn(true);
@@ -637,12 +639,12 @@ export default function JilingPage() {
     } else {
       try {
         if (isVideoOn) stopVideoStream(); // Stop camera if active
-        const stream = await navigator.mediaDevices.getDisplayMedia({ 
-          video: true, 
-          audio: false 
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: false
         });
         videoStreamRef.current = stream;
-        
+
         // Handle stream stop via browser UI
         stream.getVideoTracks()[0].onended = () => {
           stopVideoStream();
@@ -804,7 +806,7 @@ export default function JilingPage() {
     const context = audioContextRef.current;
     audioContextRef.current = null;
     if (context && context.state !== "closed") {
-      await context.close().catch(() => {});
+      await context.close().catch(() => { });
     }
   };
 
@@ -828,23 +830,23 @@ export default function JilingPage() {
       });
       mediaStreamRef.current = stream;
 
-    const source = context.createMediaStreamSource(stream);
-    const processor = context.createScriptProcessor(1024, 1, 1);
-    sourceRef.current = source;
-    processorRef.current = processor;
+      const source = context.createMediaStreamSource(stream);
+      const processor = context.createScriptProcessor(1024, 1, 1);
+      sourceRef.current = source;
+      processorRef.current = processor;
 
-    processor.onaudioprocess = (event) => {
-      const input = event.inputBuffer.getChannelData(0);
-      updateAudioFeatures(input, event.inputBuffer.sampleRate);
+      processor.onaudioprocess = (event) => {
+        const input = event.inputBuffer.getChannelData(0);
+        updateAudioFeatures(input, event.inputBuffer.sampleRate);
 
-      if (statusRef.current === "idle" || isMutedRef.current) return;
+        if (statusRef.current === "idle" || isMutedRef.current) return;
 
-      const pcm16 = resampleTo16k(input, event.inputBuffer.sampleRate);
-      clientRef.current?.sendAudio(pcm16ToBase64(pcm16));
-    };
+        const pcm16 = resampleTo16k(input, event.inputBuffer.sampleRate);
+        clientRef.current?.sendAudio(pcm16ToBase64(pcm16));
+      };
 
-    source.connect(processor);
-    processor.connect(context.destination);
+      source.connect(processor);
+      processor.connect(context.destination);
     } catch (error: unknown) {
       addLog(`[系统] 麦克风启动失败: ${errorMessage(error)}`);
       throw error;
@@ -879,7 +881,7 @@ export default function JilingPage() {
         const home = await import("@tauri-apps/api/path").then(m => m.homeDir());
         const { exists } = await import("@tauri-apps/plugin-fs");
         const detected: ProviderOption[] = [];
-        
+
         if (await exists(home + "/.openclaw")) {
           detected.push({ id: "openclaw", name: "OpenClaw", adapter: new AcpProviderAdapter("openclaw", "OpenClaw", ".openclaw") });
         }
@@ -889,7 +891,7 @@ export default function JilingPage() {
         if (await exists(home + "/.hermes")) {
           detected.push({ id: "hermes", name: "Hermes", adapter: new AcpProviderAdapter("hermes", "Hermes", ".hermes") });
         }
-        
+
         if (detected.length > 0) {
           setProviders(detected);
           // Only set default if no saved provider exists in localStorage
@@ -1035,7 +1037,20 @@ export default function JilingPage() {
     }
   };
 
-  const cleanTranscriptText = (text: string) => text;
+  const cleanTranscriptText = (text: string) => {
+    if (!text) return "";
+    const cjkRegex = /[\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]/;
+    return Array.from(text).reduce((acc, char, i, arr) => {
+      if (char === ' ' || char === '\u00A0' || char === '\u3000') {
+        const prev = arr[i - 1];
+        const next = arr[i + 1];
+        if ((prev && cjkRegex.test(prev)) || (next && cjkRegex.test(next))) {
+          return acc;
+        }
+      }
+      return acc + char;
+    }, "");
+  };
 
   const handleLiveMessage = (message: LiveMessage) => {
     if (message.goAway) {
@@ -1097,7 +1112,7 @@ export default function JilingPage() {
           return [...prev, {
             id: Math.random().toString(36).slice(2),
             role: "ai",
-            text: text,
+            text: cleanTranscriptText(text),
             timestamp: Date.now()
           }];
         });
@@ -1148,10 +1163,17 @@ export default function JilingPage() {
           const adapter = adapterRef.current;
           const selectedProvider = providers.find((provider) => provider.id === selectedProviderIdRef.current);
           const taskText = String(callArgs.task || "");
+          const jilingSkills = `\n\n## Jiling A2UI\nIf the task requires interactive UI (approvals, code reviews), you MUST return ONLY the standard A2UI JSON as your final output, with no additional markdown text: { "type": "a2ui", "payload": { "component": "ComponentName", "props": {...} } }.`;
+
           const taskRef = await adapter.submitTask({
-            identity: { systemName: "机灵", runtimeRoleDescription: profileRef.current?.roleDescription || "", mode: "background_core", userFacingRole: "same_assistant" },
+            identity: {
+              systemName: "机灵",
+              runtimeRoleDescription: (profileRef.current?.roleDescription || "") + jilingSkills,
+              mode: "background_core",
+              userFacingRole: "same_assistant"
+            },
             userRequest: taskText,
-            conversationContext: { recentUserIntent: taskText, locale: "zh-CN" },
+            conversationContext: { recentUserIntent: taskText, locale: selectedLanguage },
             executionPolicy: { askBeforeRiskyChanges: true, preferConciseProgress: false, produceSpeakableSummary: true },
             outputContract: { format: "markdown_with_titles", requireSpeakableSummary: true, requireSpokenReport: true },
           });
@@ -1159,7 +1181,7 @@ export default function JilingPage() {
             status: "submitted",
             completed: false,
             runId: taskRef.runId,
-            message: "后台任务已提交，但尚未完成。你只能告诉用户任务正在后台处理中，不能声称任务已完成，也不能编造执行结果。只有收到系统注入的“背景任务执行完毕”事件后，才可以汇报完成结果。",
+            message: "Background task submitted but not yet complete. Inform the user that the task is processing in the background. DO NOT claim the task is finished or hallucinate results. You may only report the final outcome once you receive a 'Background task completed' system event.",
           };
 
           upsertTask({
@@ -1276,8 +1298,8 @@ export default function JilingPage() {
     try {
       await invoke("abort_agent_task", { runId });
       addLog(`[任务] 已发送终止请求: ${runId}`);
-      setAgentTasks(prev => prev.map(t => 
-        t.runId === runId ? { ...t, phase: "failed", error: "已手动终止" } : t
+      setAgentTasks(prev => prev.map(t =>
+        t.runId === runId ? { ...t, phase: "cancelled", error: "已手动终止" } : t
       ));
     } catch (error: unknown) {
       addLog(`[任务] 终止失败: ${errorMessage(error)}`);
@@ -1295,21 +1317,38 @@ export default function JilingPage() {
       clearGoAwayTimer();
       stopMic();
       clientRef.current?.closeNow();
-      audioContextRef.current?.close().catch(() => {});
+      audioContextRef.current?.close().catch(() => { });
     };
   }, []);
 
   const statusText =
     status === "idle" ? "准备就绪" :
-    status === "listening" ? "正在倾听" :
-    status === "thinking" ? "正在执行" :
-    "正在回答";
+      status === "listening" ? "正在倾听" :
+        status === "thinking" ? "正在执行" :
+          "正在回答";
 
   const runningTasks = agentTasks.filter((task) => task.phase === "submitted" || task.phase === "running");
+  
+  // Detect if any task has an active A2UI payload that needs attention
+  const [dismissedA2UIIds, setDismissedA2UIIds] = useState<Set<string>>(new Set());
+  const activeA2UITask = useMemo(() => {
+    // Find the most recent task that has an A2UI payload in its output
+    const a2uiTask = [...agentTasks]
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .find(t => {
+        if (t.phase !== "running" && t.phase !== "submitted" && t.phase !== "completed") return false;
+        if (!t.output) return false;
+        if (dismissedA2UIIds.has(t.runId)) return false;
+        // Simple check for A2UI JSON structure
+        return t.output.includes('"type": "a2ui"') && t.output.includes('"payload"');
+      });
+    return a2uiTask;
+  }, [agentTasks, dismissedA2UIIds]);
 
   const readingModeContent = (isTaskPinned && !isSharing && !isVideoOn) ? (
     <div className="flex h-full w-full flex-col overflow-hidden bg-black selection:bg-blue-600/40">
-      <style dangerouslySetInnerHTML={{ __html: `
+      <style dangerouslySetInnerHTML={{
+        __html: `
         .reading-mode-content ::selection {
           background-color: rgba(59, 130, 246, 0.4) !important;
         }
@@ -1317,12 +1356,12 @@ export default function JilingPage() {
           background-color: rgba(59, 130, 246, 0.4) !important;
         }
       ` }} />
-      
+
       {/* Floating Close Button */}
       <div className="absolute right-6 top-6 z-50">
-        <Button 
-          variant="ghost" 
-          size="icon" 
+        <Button
+          variant="ghost"
+          size="icon"
           onClick={() => setIsTaskPinned(false)}
           className="h-10 w-10 rounded-full bg-white/5 text-white/40 hover:bg-white/10 hover:text-white transition-all backdrop-blur-md border border-white/5 shadow-2xl"
         >
@@ -1338,7 +1377,7 @@ export default function JilingPage() {
                 {/* Unified Header Block */}
                 <div>
                   <h3 className="text-sm font-bold text-white leading-tight line-clamp-2">{activeTask.title}</h3>
-                  
+
                   <details className="mt-3 group">
                     <summary className="flex items-center cursor-pointer text-[10px] text-white/30 hover:text-white/50 transition-colors list-none">
                       <ChevronDown className="h-3 w-3 mr-1 transition-transform group-open:rotate-180" />
@@ -1348,13 +1387,12 @@ export default function JilingPage() {
                       {activeTask.title}
                     </div>
                   </details>
-                  
+
                   <div className="mt-4 flex items-center gap-3">
-                    <div className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
-                      activeTask.phase === "completed" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" :
-                      activeTask.phase === "running" ? "bg-primary/10 text-primary border border-primary/20 animate-pulse" :
-                      "bg-white/5 text-white/40 border border-white/10"
-                    }`}>
+                    <div className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${activeTask.phase === "completed" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" :
+                        activeTask.phase === "running" ? "bg-primary/10 text-primary border border-primary/20 animate-pulse" :
+                          "bg-white/5 text-white/40 border border-white/10"
+                      }`}>
                       {activeTask.phase === "completed" ? "已完成" : activeTask.phase === "running" ? "正在执行" : "等待中"}
                     </div>
                     <span className="text-[10px] text-white/30 font-mono uppercase tracking-widest">{activeTask.providerName}</span>
@@ -1366,55 +1404,33 @@ export default function JilingPage() {
                 {/* Output Content */}
                 {activeTask.output ? (
                   <div className="w-full max-w-none wrap-break-word overflow-x-hidden font-sans">
-                    <ReactMarkdown 
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        h1: ({node, ...props}) => <h1 className="text-xl font-bold text-white mt-8 mb-4 tracking-tight" {...props} />,
-                        h2: ({node, ...props}) => <h2 className="text-lg font-bold text-white mt-6 mb-3 tracking-tight" {...props} />,
-                        h3: ({node, ...props}) => <h3 className="text-base font-bold text-white mt-5 mb-2 tracking-tight" {...props} />,
-                        div: ({node, ...props}) => <div className="text-[13px] leading-7 text-white/80 my-4 wrap-break-word" {...props} />,
-                        p: ({node, ...props}) => <div className="text-[13px] leading-7 text-white/80 my-4 wrap-break-word" {...props} />,
-                        strong: ({node, ...props}) => <strong className="font-bold text-white" {...props} />,
-                        em: ({node, ...props}) => <em className="italic text-white/70" {...props} />,
-                        ul: ({node, ...props}) => <ul className="list-disc pl-5 my-4 space-y-2" {...props} />,
-                        ol: ({node, ...props}) => <ol className="list-decimal pl-5 my-4 space-y-2" {...props} />,
-                        li: ({node, ...props}) => <li className="text-[13px] text-white/80" {...props} />,
-                        code: ({node, inline, ...props}: any) => {
-                          const content = String(props.children).replace(/\n$/, "");
-                          const isMultiline = content.includes("\n");
-                          
-                          if (inline) {
-                            return <code className="bg-white/10 text-white/90 px-1.5 py-0.5 rounded-md text-[11px] font-mono" {...props} />;
-                          }
-
-                          if (!isMultiline) {
-                            return (
-                              <div className="inline-flex items-center bg-white/10 text-white/90 px-3 py-1.5 rounded-lg border border-white/10 font-mono text-[11px] my-1">
-                                <code {...props} />
-                              </div>
-                            );
-                          }
-
-                          return (
-                            <div className="bg-white/5 p-5 rounded-xl overflow-x-auto my-5 border border-white/10 font-mono whitespace-pre text-[12px] text-white/90">
-                              <code {...props} />
-                            </div>
-                          );
-                        },
-                        table: ({node, ...props}) => (
-                          <div className="my-8 rounded-2xl border border-white/10 overflow-hidden bg-white/2 shadow-2xl">
-                            <table className="w-full border-collapse border-spacing-0" {...props} />
-                          </div>
-                        ),
-                        thead: ({node, ...props}) => <thead className="bg-white/5 border-b border-white/10" {...props} />,
-                        th: ({node, ...props}) => <th className="p-4 text-left text-[12px] font-bold text-white uppercase tracking-wider" {...props} />,
-                        td: ({node, ...props}) => <td className="p-4 border-b border-white/5 text-[13px] text-white/80 align-top" {...props} />,
-                        blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-primary/40 pl-5 italic text-white/60 my-6" {...props} />,
-                        hr: ({node, ...props}) => <hr className="my-10 border-white/10" {...props} />,
+                    <AuraRenderer 
+                      content={activeTask.output} 
+                      onAction={(action: string, data: any) => {
+                        console.log(`[A2UI Action] ${action}`, data);
+                        // TODO: Add feedback logic to notify the agent
                       }}
-                    >
-                      {cleanTranscriptText(activeTask.output)}
-                    </ReactMarkdown>
+                    />
+                  </div>
+                ) : (activeTask.error || activeTask.phase === "cancelled" || activeTask.phase === "lost") ? (
+                  <div className={`rounded-lg p-6 border ${
+                    activeTask.phase === "cancelled" 
+                      ? "bg-orange-500/10 text-orange-400 border-orange-500/20" 
+                      : activeTask.phase === "lost"
+                      ? "bg-white/5 text-white/40 border-white/10"
+                      : "bg-destructive/10 text-destructive border-destructive/20"
+                  }`}>
+                    <div className="flex items-center gap-3 font-bold mb-2">
+                      {activeTask.phase === "lost" ? <HistoryIcon className="h-5 w-5" /> : <XCircle className="h-5 w-5" />}
+                      <span>{
+                        activeTask.phase === "cancelled" ? "任务已终止" : 
+                        activeTask.phase === "lost" ? "任务状态丢失" :
+                        "执行失败"
+                      }</span>
+                    </div>
+                    <p className="opacity-90">
+                      {activeTask.phase === "lost" ? "由于 Agent 连接异常中断，该任务已无法继续追踪。" : (activeTask.error || "未知错误")}
+                    </p>
                   </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center py-32 text-center">
@@ -1460,404 +1476,454 @@ export default function JilingPage() {
 
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: `
+      <style dangerouslySetInnerHTML={{
+        __html: `
         ::selection {
           background-color: rgba(59, 130, 246, 0.4) !important;
         }
       ` }} />
       <main className="relative h-screen w-full overflow-hidden bg-black text-white">
-      <AnimatePresence>
-        {status !== "idle" && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ 
-              opacity: status === "speaking" ? 0.3 + (volume * 0.7) : 0.2,
-              boxShadow: status === "thinking" 
-                ? "inset 0 0 80px rgba(168, 85, 247, 0.4)"
-                : status === "listening"
-                ? "inset 0 0 60px rgba(72, 255, 222, 0.3)"
-                : `inset 0 0 ${60 + (volume * 100)}px rgba(16, 185, 129, 0.5)`,
-            }}
-            exit={{ opacity: 0 }}
-            transition={{ 
-              duration: (status === "thinking" || status === "listening") ? 1.5 : 0.15,
-              repeat: (status === "thinking" || status === "listening") ? Infinity : 0,
-              repeatType: "reverse"
-            }}
-            className="pointer-events-none fixed inset-0 z-400 border border-white/5"
-          />
-        )}
-      </AnimatePresence>
+        <AnimatePresence>
+          {status !== "idle" && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{
+                opacity: status === "speaking" ? 0.3 + (volume * 0.7) : 0.2,
+                boxShadow: status === "thinking"
+                  ? "inset 0 0 80px rgba(168, 85, 247, 0.4)"
+                  : status === "listening"
+                    ? "inset 0 0 60px rgba(72, 255, 222, 0.3)"
+                    : `inset 0 0 ${60 + (volume * 100)}px rgba(16, 185, 129, 0.5)`,
+              }}
+              exit={{ opacity: 0 }}
+              transition={{
+                duration: (status === "thinking" || status === "listening") ? 1.5 : 0.15,
+                repeat: (status === "thinking" || status === "listening") ? Infinity : 0,
+                repeatType: "reverse"
+              }}
+              className="pointer-events-none fixed inset-0 z-400 border border-white/5"
+            />
+          )}
+        </AnimatePresence>
 
-      <AnimatePresence>
-        {toast && (
-          <motion.div
-            initial={{ y: -50, opacity: 0, x: "-50%" }}
-            animate={{ y: 20, opacity: 1, x: "-50%" }}
-            exit={{ y: -50, opacity: 0, x: "-50%" }}
-            className={`fixed left-1/2 top-4 z-300 flex items-center gap-3 rounded-2xl border px-6 py-3 shadow-2xl backdrop-blur-xl ${
-              toast.type === "error" 
-                ? "border-destructive/40 bg-destructive/10 text-destructive" 
-                : "border-white/10 bg-white/5 text-white"
-            }`}
-          >
-            <div className={`h-2 w-2 rounded-full ${toast.type === "error" ? "bg-destructive animate-pulse" : "bg-primary animate-pulse"}`} />
-            <span className="text-sm font-medium tracking-wide">{toast.message}</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <div className="absolute inset-0 z-0">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_43%,rgba(72,255,222,0.08),transparent_24%),radial-gradient(circle_at_56%_39%,rgba(255,93,184,0.05),transparent_22%)]" />
-        
-        <div className="flex h-full w-full items-center justify-center px-4 pb-20 pt-24">
-          <AnimatePresence mode="wait">
-            {mainDisplayContent ? (
-              <motion.div
-                key="main-display"
-                initial={{ opacity: 0, scale: 0.98, y: 10 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.98, y: 10 }}
-                transition={{ type: "spring", damping: 30, stiffness: 300 }}
-                className={`relative z-10 flex h-full max-h-[82vh] w-[94%] max-w-6xl items-center justify-center overflow-hidden rounded-3xl border border-white/10 bg-[#0a0a0a]/80 shadow-2xl ${
-                  (isSharing || isTaskPinned || isVideoOn) ? "" : "glass-panel backdrop-blur-3xl"
+        <AnimatePresence>
+          {toast && (
+            <motion.div
+              initial={{ y: -50, opacity: 0, x: "-50%" }}
+              animate={{ y: 20, opacity: 1, x: "-50%" }}
+              exit={{ y: -50, opacity: 0, x: "-50%" }}
+              className={`fixed left-1/2 top-4 z-300 flex items-center gap-3 rounded-2xl border px-6 py-3 shadow-2xl backdrop-blur-xl ${toast.type === "error"
+                  ? "border-destructive/40 bg-destructive/10 text-destructive"
+                  : "border-white/10 bg-white/5 text-white"
                 }`}
-              >
-                {mainDisplayContent}
-              </motion.div>
-            ) : (
-              <motion.div
-                key="orb-display"
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                className="relative flex flex-col items-center"
-              >
-                <SmartOrb
-                  volume={volume}
-                  features={audioFeatures}
-                  status={status}
-                  compact={false}
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      </div>
+            >
+              <div className={`h-2 w-2 rounded-full ${toast.type === "error" ? "bg-destructive animate-pulse" : "bg-primary animate-pulse"}`} />
+              <span className="text-sm font-medium tracking-wide">{toast.message}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-      <header data-tauri-drag-region className="relative flex items-center justify-between px-8 pt-10 pb-6 select-none" style={{ zIndex: 600 }}>
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <label className="relative">
-              <Sparkles className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/40" />
-              <select
-                disabled={isBusy || isConnected}
-                value={selectedVoice}
-                onChange={(e) => setSelectedVoice(e.target.value)}
-                className="h-9 w-36 appearance-none rounded-full border border-white/10 bg-white/5 pl-9 pr-8 text-xs text-white/60 outline-none backdrop-blur-xl transition hover:bg-white/10 focus:border-primary/50 disabled:opacity-50 [app-region:no-drag]"
-              >
-                {VOICES.map(v => <option key={v.id} value={v.id} className="bg-[#1a1a1a] font-sans">{v.name}</option>)}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-white/30" />
-            </label>
+        <div className="absolute inset-0 z-0">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_43%,rgba(72,255,222,0.08),transparent_24%),radial-gradient(circle_at_56%_39%,rgba(255,93,184,0.05),transparent_22%)]" />
 
-            <label className="relative">
-              <Languages className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/40" />
-              <select
-                disabled={isBusy || isConnected}
-                value={selectedLanguage}
-                onChange={(e) => {
-                  setSelectedLanguage(e.target.value);
-                  localStorage.setItem("jiling_selected_language", e.target.value);
-                }}
-                className="h-9 w-28 appearance-none rounded-full border border-white/10 bg-white/5 pl-9 pr-8 text-xs text-white/60 outline-none backdrop-blur-xl transition hover:bg-white/10 focus:border-primary/50 disabled:opacity-50 [app-region:no-drag]"
-              >
-                <option value="auto" className="bg-[#1a1a1a]">Auto</option>
-                <option value="zh-CN" className="bg-[#1a1a1a]">中文</option>
-                <option value="en-US" className="bg-[#1a1a1a]">English</option>
-                <option value="ja-JP" className="bg-[#1a1a1a]">日本語</option>
-                <option value="ko-KR" className="bg-[#1a1a1a]">한국어</option>
-                <option value="fr-FR" className="bg-[#1a1a1a]">Français</option>
-                <option value="de-DE" className="bg-[#1a1a1a]">Deutsch</option>
-                <option value="es-ES" className="bg-[#1a1a1a]">Español</option>
-                <option value="pt-BR" className="bg-[#1a1a1a]">Português</option>
-                <option value="it-IT" className="bg-[#1a1a1a]">Italiano</option>
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-white/30" />
-            </label>
-            
-            {providers.length > 0 && (
-              <div className="flex items-center gap-1.5">
-                <label className="relative">
-                  <Bot className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/40" />
-                  <select
-                    disabled={isBusy || isConnected}
-                    value={selectedProviderId}
-                    onChange={(e) => setSelectedProviderId(e.target.value)}
-                    className="h-9 w-32 appearance-none rounded-full border border-white/10 bg-white/5 pl-9 pr-8 text-xs text-white/60 outline-none backdrop-blur-xl transition hover:bg-white/10 focus:border-primary/50 disabled:opacity-50 [app-region:no-drag]"
-                  >
-                    {providers.map(p => <option key={p.id} value={p.id} className="bg-[#1a1a1a]">{providerLabel(p.id, p.name)}</option>)}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-white/30" />
-                </label>
-
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger 
-                      render={
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          disabled={isBusy || isConnected}
-                          onClick={clearSessionHandle}
-                          className="h-9 w-9 rounded-full bg-white/5 text-white/30 hover:bg-destructive/10 hover:text-destructive transition-colors [app-region:no-drag]"
-                        >
-                          <Eraser className="h-3.5 w-3.5" />
-                        </Button>
-                      }
-                    />
-                    <TooltipContent><p>擦除记忆 (Handle)</p></TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-            )}
-
-            {isConnected && (
-              <div className="ml-2 flex items-center gap-2 rounded-full bg-emerald-500/5 px-2.5 py-1 text-[10px] font-medium text-emerald-400/80 border border-emerald-500/10 backdrop-blur-md">
-                <span className="relative flex h-1.5 w-1.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400/50 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
-                </span>
-                LIVE • {statusText}
-              </div>
-            )}
+          <div className="flex h-full w-full items-center justify-center px-4 pb-20 pt-24">
+            <AnimatePresence mode="wait">
+              {mainDisplayContent ? (
+                <motion.div
+                  key="main-display"
+                  initial={{ opacity: 0, scale: 0.98, y: 10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.98, y: 10 }}
+                  transition={{ type: "spring", damping: 30, stiffness: 300 }}
+                  className={`relative z-10 flex h-full max-h-[82vh] w-[94%] max-w-6xl items-center justify-center overflow-hidden rounded-3xl border border-white/10 bg-[#0a0a0a]/80 shadow-2xl ${(isSharing || isTaskPinned || isVideoOn) ? "" : "glass-panel backdrop-blur-3xl"
+                    }`}
+                >
+                  {mainDisplayContent}
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="orb-display"
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  className="relative flex flex-col items-center"
+                >
+                  <SmartOrb
+                    volume={volume}
+                    features={audioFeatures}
+                    status={status}
+                    compact={false}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => {
-              if (isSharing || isVideoOn) {
-                showToast("正在共享屏幕或视频，请先停止后再进入阅读模式", "error");
-                return;
-              }
-              setIsTaskPinned(!isTaskPinned);
-            }}
-            className={`relative h-10 w-10 rounded-full border border-white/10 backdrop-blur-md transition-all duration-500 ${
-              isTaskPinned 
-                ? "bg-primary/20 text-primary border-primary/40 shadow-[0_0_15px_rgba(72,255,222,0.2)]" 
-                : "bg-white/5 text-white/60 hover:bg-white/10 hover:text-white"
-            }`}
-          >
-            <AppWindow className="h-5 w-5" />
-            {isTaskPinned && (
-              <span className="absolute -right-1 -top-1 flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-primary"></span>
-              </span>
-            )}
-          </Button>
+        <header data-tauri-drag-region className="relative flex items-center justify-between px-8 pt-10 pb-6 select-none" style={{ zIndex: 600 }}>
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2">
+              <label className="relative">
+                <Sparkles className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/40" />
+                <select
+                  disabled={isBusy || isConnected}
+                  value={selectedVoice}
+                  onChange={(e) => setSelectedVoice(e.target.value)}
+                  className="h-9 w-36 appearance-none rounded-full border border-white/10 bg-white/5 pl-9 pr-8 text-xs text-white/60 outline-none backdrop-blur-xl transition hover:bg-white/10 focus:border-primary/50 disabled:opacity-50 [app-region:no-drag]"
+                >
+                  {VOICES.map(v => <option key={v.id} value={v.id} className="bg-[#1a1a1a] font-sans">{v.name}</option>)}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-white/30" />
+              </label>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setIsSidePanelOpen(true)}
-            className="relative h-10 w-10 rounded-full border border-white/10 bg-white/5 backdrop-blur-md text-white/60 hover:bg-white/10 hover:text-white"
-          >
-            <ListChecks className="h-5 w-5" />
-            {runningTasks.length > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white shadow-lg">
-                {runningTasks.length}
-              </span>
-            )}
-          </Button>
+              <label className="relative">
+                <Languages className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/40" />
+                <select
+                  disabled={isBusy || isConnected}
+                  value={selectedLanguage}
+                  onChange={(e) => {
+                    setSelectedLanguage(e.target.value);
+                    localStorage.setItem("jiling_selected_language", e.target.value);
+                  }}
+                  className="h-9 w-28 appearance-none rounded-full border border-white/10 bg-white/5 pl-9 pr-8 text-xs text-white/60 outline-none backdrop-blur-xl transition hover:bg-white/10 focus:border-primary/50 disabled:opacity-50 [app-region:no-drag]"
+                >
+                  <option value="auto" className="bg-[#1a1a1a]">Auto</option>
+                  <option value="zh-CN" className="bg-[#1a1a1a]">中文</option>
+                  <option value="en-US" className="bg-[#1a1a1a]">English</option>
+                  <option value="ja-JP" className="bg-[#1a1a1a]">日本語</option>
+                  <option value="ko-KR" className="bg-[#1a1a1a]">한국어</option>
+                  <option value="fr-FR" className="bg-[#1a1a1a]">Français</option>
+                  <option value="de-DE" className="bg-[#1a1a1a]">Deutsch</option>
+                  <option value="es-ES" className="bg-[#1a1a1a]">Español</option>
+                  <option value="pt-BR" className="bg-[#1a1a1a]">Português</option>
+                  <option value="it-IT" className="bg-[#1a1a1a]">Italiano</option>
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-white/30" />
+              </label>
 
-          <Button
-            variant={showLogs ? "default" : "ghost"}
-            size="icon"
-            onClick={() => setShowLogs(!showLogs)}
-            className={`h-10 w-10 rounded-full border backdrop-blur-md transition-all duration-300 [app-region:no-drag] ${
-              showLogs 
-                ? "bg-white! text-black! border-white shadow-[0_0_20px_rgba(255,255,255,0.3)] scale-110" 
-                : "bg-white/5 text-white/60 border-white/10 hover:bg-white/10 hover:text-white"
-            }`}
-          >
-            <Terminal className="h-5 w-5" />
-          </Button>
+              {providers.length > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <label className="relative">
+                    <Bot className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/40" />
+                    <select
+                      disabled={isBusy || isConnected}
+                      value={selectedProviderId}
+                      onChange={(e) => setSelectedProviderId(e.target.value)}
+                      className="h-9 w-32 appearance-none rounded-full border border-white/10 bg-white/5 pl-9 pr-8 text-xs text-white/60 outline-none backdrop-blur-xl transition hover:bg-white/10 focus:border-primary/50 disabled:opacity-50 [app-region:no-drag]"
+                    >
+                      {providers.map(p => <option key={p.id} value={p.id} className="bg-[#1a1a1a]">{providerLabel(p.id, p.name)}</option>)}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-white/30" />
+                  </label>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setShowSettings(true)}
-            className="h-10 w-10 rounded-full border border-white/10 bg-white/5 backdrop-blur-md text-white/60 hover:bg-white/10 hover:text-white transition-all [app-region:no-drag]"
-          >
-            <KeyRound className="h-5 w-5" />
-          </Button>
-        </div>
-      </header>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            disabled={isBusy || isConnected}
+                            onClick={clearSessionHandle}
+                            className="h-9 w-9 rounded-full bg-white/5 text-white/30 hover:bg-destructive/10 hover:text-destructive transition-colors [app-region:no-drag]"
+                          >
+                            <Eraser className="h-3.5 w-3.5" />
+                          </Button>
+                        }
+                      />
+                      <TooltipContent><p>擦除记忆 (Handle)</p></TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+              )}
 
-      <ControlBar 
-        isMuted={isMuted}
-        onToggleMute={() => setIsMuted(!isMuted)}
-        isVideoOn={isVideoOn}
-        onToggleVideo={handleToggleVideo}
-        isSharing={isSharing}
-        onToggleShare={handleToggleShare}
-        showTranscript={showTranscript}
-        onToggleTranscript={() => setShowTranscript(!showTranscript)}
-        isConnected={isConnected}
-        onConnect={startConversation}
-        onDisconnect={stopConversation}
-        isBusy={isBusy}
+              {isConnected && (
+                <div className="ml-2 flex items-center gap-2 rounded-full bg-emerald-500/5 px-2.5 py-1 text-[10px] font-medium text-emerald-400/80 border border-emerald-500/10 backdrop-blur-md">
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400/50 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                  </span>
+                  LIVE • {statusText}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                if (isSharing || isVideoOn) {
+                  showToast("正在共享屏幕或视频，请先停止后再进入阅读模式", "error");
+                  return;
+                }
+                setIsTaskPinned(!isTaskPinned);
+              }}
+              className={`relative h-10 w-10 rounded-full border border-white/10 backdrop-blur-md transition-all duration-500 ${isTaskPinned
+                  ? "bg-primary/20 text-primary border-primary/40 shadow-[0_0_15px_rgba(72,255,222,0.2)]"
+                  : "bg-white/5 text-white/60 hover:bg-white/10 hover:text-white"
+                }`}
+            >
+              <AppWindow className="h-5 w-5" />
+              {isTaskPinned && (
+                <span className="absolute -right-1 -top-1 flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-primary"></span>
+                </span>
+              )}
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsSidePanelOpen(true)}
+              className="relative h-10 w-10 rounded-full border border-white/10 bg-white/5 backdrop-blur-md text-white/60 hover:bg-white/10 hover:text-white"
+            >
+              <ListChecks className="h-5 w-5" />
+              {runningTasks.length > 0 && (
+                <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white shadow-lg">
+                  {runningTasks.length}
+                </span>
+              )}
+            </Button>
+
+            <Button
+              variant={showLogs ? "default" : "ghost"}
+              size="icon"
+              onClick={() => setShowLogs(!showLogs)}
+              className={`h-10 w-10 rounded-full border backdrop-blur-md transition-all duration-300 [app-region:no-drag] ${showLogs
+                  ? "bg-white! text-black! border-white shadow-[0_0_20px_rgba(255,255,255,0.3)] scale-110"
+                  : "bg-white/5 text-white/60 border-white/10 hover:bg-white/10 hover:text-white"
+                }`}
+            >
+              <Terminal className="h-5 w-5" />
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowSettings(true)}
+              className="h-10 w-10 rounded-full border border-white/10 bg-white/5 backdrop-blur-md text-white/60 hover:bg-white/10 hover:text-white transition-all [app-region:no-drag]"
+            >
+              <KeyRound className="h-5 w-5" />
+            </Button>
+          </div>
+        </header>
+
+        <ControlBar
+          isMuted={isMuted}
+          onToggleMute={() => setIsMuted(!isMuted)}
+          isVideoOn={isVideoOn}
+          onToggleVideo={handleToggleVideo}
+          isSharing={isSharing}
+          onToggleShare={handleToggleShare}
+          showTranscript={showTranscript}
+          onToggleTranscript={() => setShowTranscript(!showTranscript)}
+          isConnected={isConnected}
+          onConnect={startConversation}
+          onDisconnect={stopConversation}
+          isBusy={isBusy}
+        />
+
+
+        <canvas ref={canvasRef} className="hidden" aria-hidden="true" />
+      </main>
+
+      <TaskSidePanel
+        isOpen={isSidePanelOpen}
+        onClose={() => setIsSidePanelOpen(false)}
+        tasks={agentTasks}
+        selectedTaskId={selectedTaskId}
+        onSelectTask={setSelectedTaskId}
+        isPinned={isTaskPinned}
+        onTogglePin={() => {
+          if (isSharing || isVideoOn) {
+            showToast("正在共享屏幕或视频，请先停止后再进入阅读模式", "error");
+            return;
+          }
+          setIsTaskPinned(!isTaskPinned);
+        }}
+        onAbortTask={handleAbortTask}
       />
 
-
-      <canvas ref={canvasRef} className="hidden" aria-hidden="true" />
-    </main>
-    
-    <TaskSidePanel 
-      isOpen={isSidePanelOpen}
-      onClose={() => setIsSidePanelOpen(false)}
-      tasks={agentTasks}
-      selectedTaskId={selectedTaskId}
-      onSelectTask={setSelectedTaskId}
-      isPinned={isTaskPinned}
-      onTogglePin={() => {
-        if (isSharing || isVideoOn) {
-          showToast("正在共享屏幕或视频，请先停止后再进入阅读模式", "error");
-          return;
-        }
-        setIsTaskPinned(!isTaskPinned);
-      }}
-      onAbortTask={handleAbortTask}
-    />
-
-    <div className={`pointer-events-none fixed z-200 transition-all duration-500 ${
-      (isSharing || isTaskPinned || isVideoOn) 
-        ? "bottom-24 right-8 w-full max-w-sm" 
-        : "bottom-24 left-1/2 w-full max-w-4xl -translate-x-1/2 px-8"
-    }`}>
-      <TranscriptOverlay 
-        messages={transcript} 
-        visible={showTranscript && isConnected && status !== "idle"} 
-        pinned={isSharing || isTaskPinned || isVideoOn}
-      />
-    </div>
-
-    {(isSharing || isTaskPinned || isVideoOn) && (
-      <div className="pointer-events-none fixed bottom-8 right-8 z-200 scale-75 transform origin-right">
-        <SmartOrb
-          volume={volume}
-          features={audioFeatures}
-          status={status}
-          compact={true}
+      <div className={`pointer-events-none fixed z-200 transition-all duration-500 ${(isSharing || isTaskPinned || isVideoOn)
+          ? "bottom-24 right-8 w-full max-w-sm"
+          : "bottom-24 left-1/2 w-full max-w-4xl -translate-x-1/2 px-8"
+        }`}>
+        <TranscriptOverlay
+          messages={transcript}
+          visible={showTranscript && isConnected && status !== "idle"}
+          pinned={isSharing || isTaskPinned || isVideoOn}
         />
       </div>
-    )}
 
-    <AnimatePresence>
-      {showSettings && (
-        <div className="fixed inset-0 z-500 flex items-center justify-center bg-black/60 backdrop-blur-md">
-          <motion.div 
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.9, opacity: 0 }}
-            className="glass-panel w-full max-w-md rounded-3xl p-8"
-            style={{ zIndex: 800 }}
-          >
-            <div className="mb-6 flex items-center justify-between">
-              <h2 className="text-xl font-bold">应用设置</h2>
-              <Button variant="ghost" size="icon" onClick={() => setShowSettings(false)} className="rounded-full">
-                <X className="h-5 w-5" />
-              </Button>
-            </div>
+      {(isSharing || isTaskPinned || isVideoOn) && (
+        <div className="pointer-events-none fixed bottom-8 right-8 z-200 scale-75 transform origin-right">
+          <SmartOrb
+            volume={volume}
+            features={audioFeatures}
+            status={status}
+            compact={true}
+          />
+        </div>
+      )}
 
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-white/60">Gemini API Key</label>
-                <input 
-                  type="password"
-                  value={apiKeyInput}
-                  onChange={(e) => setApiKeyInput(e.target.value)}
-                  placeholder={apiKeyConfigured ? "已配置 (留空保留当前密钥)" : "输入你的 Gemini API Key"}
-                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm outline-none transition focus:border-primary/50 focus:bg-white/10"
-                />
-                <div className="mt-2 p-4 rounded-xl bg-white/3 border border-white/5 text-[11px] text-white/50 leading-relaxed italic whitespace-pre-wrap wrap-break-word overflow-hidden">
-                  {settingsError && <p className="text-xs text-destructive">{settingsError}</p>}
-                </div>
+      <AnimatePresence>
+        {showSettings && (
+          <div className="fixed inset-0 z-500 flex items-center justify-center bg-black/60 backdrop-blur-md">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="glass-panel w-full max-w-md rounded-3xl p-8"
+              style={{ zIndex: 800 }}
+            >
+              <div className="mb-6 flex items-center justify-between">
+                <h2 className="text-xl font-bold">应用设置</h2>
+                <Button variant="ghost" size="icon" onClick={() => setShowSettings(false)} className="rounded-full">
+                  <X className="h-5 w-5" />
+                </Button>
               </div>
 
-              <div className="flex gap-3 pt-4">
-                <Button 
-                  className="flex-1 rounded-xl h-12 bg-emerald-500 text-black hover:bg-emerald-400 font-bold transition-all shadow-[0_0_15px_rgba(16,185,129,0.2)]" 
-                  onClick={saveApiKey}
-                  disabled={isSavingSettings}
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-white/60">Gemini API Key</label>
+                  <input
+                    type="password"
+                    value={apiKeyInput}
+                    onChange={(e) => setApiKeyInput(e.target.value)}
+                    placeholder={apiKeyConfigured ? "已配置 (留空保留当前密钥)" : "输入你的 Gemini API Key"}
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm outline-none transition focus:border-primary/50 focus:bg-white/10"
+                  />
+                  <div className="mt-2 p-4 rounded-xl bg-white/3 border border-white/5 text-[11px] text-white/50 leading-relaxed italic whitespace-pre-wrap wrap-break-word overflow-hidden">
+                    {settingsError && <p className="text-xs text-destructive">{settingsError}</p>}
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <Button
+                    className="flex-1 rounded-xl h-12 bg-emerald-500 text-black hover:bg-emerald-400 font-bold transition-all shadow-[0_0_15px_rgba(16,185,129,0.2)]"
+                    onClick={saveApiKey}
+                    disabled={isSavingSettings}
+                  >
+                    {isSavingSettings ? "正在保存..." : "保存设置"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="flex-1 rounded-xl h-12 border-white/10 bg-white/5 text-white hover:bg-white/10 hover:border-white/20 transition-all"
+                    onClick={runSelfTest}
+                    disabled={isBusy}
+                  >
+                    运行自检
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Progressive Log Area - Outside main */}
+      <AnimatePresence>
+        {showLogs && (
+          <motion.div
+            initial={{ opacity: 0, x: 50 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 50 }}
+            className="fixed glass-panel rounded-3xl p-6 overflow-hidden flex flex-col shadow-2xl backdrop-blur-3xl border-white/20"
+            style={{
+              width: 'min(550px, 90vw)',
+              height: 'min(700px, 75vh)',
+              right: 'max(16px, 2vw)',
+              top: '128px',
+              zIndex: 2000
+            }}
+          >
+            <div className="flex items-center justify-between mb-4 pb-2 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <Terminal className="h-4 w-4 text-white" />
+                <h3 className="text-[11px] font-bold text-white uppercase tracking-wider">系统调试控制台</h3>
+              </div>
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={() => setShowLogs(false)}
+                  className="text-white/40 hover:text-white transition-colors"
                 >
-                  {isSavingSettings ? "正在保存..." : "保存设置"}
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+              <div className="space-y-0.5 font-mono leading-tight">
+                {logs.map((log, i) => (
+                  <div key={i} className="flex gap-2 group border-b border-white/5 py-0.5 last:border-0 hover:bg-white/5 transition-colors">
+                    <span className="text-[9px] text-white/10 select-none w-6 shrink-0 text-right">{i + 1}</span>
+                    <span className="text-[10px] text-white/80 group-hover:text-white break-all whitespace-pre-wrap">{log}</span>
+                  </div>
+                ))}
+                <div ref={logEndRef} />
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {activeA2UITask && !(isSidePanelOpen && selectedTaskId === activeA2UITask.runId) && (
+          <motion.div 
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 50, scale: 0.9 }}
+            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-100 w-full max-w-lg px-4"
+          >
+            <div className="relative group overflow-hidden rounded-3xl border border-white/10 bg-black/80 p-1 shadow-2xl backdrop-blur-2xl ring-1 ring-white/20">
+              <div className="absolute inset-0 bg-linear-to-b from-white/5 to-transparent pointer-events-none" />
+              
+              <div className="flex items-center justify-between px-4 py-2 border-b border-white/5 bg-white/2">
+                <div className="flex items-center gap-2">
+                  <div className="h-2 w-2 rounded-full bg-orange-400 animate-pulse" />
+                  <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">待处理交互请求</span>
+                </div>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="h-6 w-6 text-white/20 hover:text-white"
+                  onClick={() => setDismissedA2UIIds(prev => new Set(prev).add(activeA2UITask.runId))}
+                >
+                  <X className="h-3 w-3" />
                 </Button>
+              </div>
+
+              <div className="max-h-[60vh] overflow-y-auto p-2 custom-scrollbar">
+                <AuraRenderer 
+                  content={activeA2UITask.output!} 
+                  onAction={(action: string, data: any) => {
+                    console.log(`[Global A2UI Action] ${action}`, data);
+                    // TODO: Notify agent
+                    setDismissedA2UIIds(prev => new Set(prev).add(activeA2UITask.runId));
+                  }}
+                />
+              </div>
+
+              <div className="p-3 bg-white/2 border-t border-white/5 flex items-center justify-between">
+                <span className="text-[10px] text-white/30 truncate max-w-[200px]">来自: {activeA2UITask.title}</span>
                 <Button 
-                  variant="outline" 
-                  className="flex-1 rounded-xl h-12 border-white/10 bg-white/5 text-white hover:bg-white/10 hover:border-white/20 transition-all" 
-                  onClick={runSelfTest}
-                  disabled={isBusy}
+                  variant="link" 
+                  className="h-auto p-0 text-[10px] text-primary hover:text-primary/80"
+                  onClick={() => {
+                    setSelectedTaskId(activeA2UITask.runId);
+                    setIsSidePanelOpen(true);
+                  }}
                 >
-                  运行自检
+                  查看任务详情 <ChevronRight className="ml-1 h-3 w-3" />
                 </Button>
               </div>
             </div>
           </motion.div>
-        </div>
-      )}
-    </AnimatePresence>
-
-    {/* Progressive Log Area - Outside main */}
-    <AnimatePresence>
-      {showLogs && (
-        <motion.div 
-          initial={{ opacity: 0, x: 50 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: 50 }}
-          className="fixed glass-panel rounded-3xl p-6 overflow-hidden flex flex-col shadow-2xl backdrop-blur-3xl border-white/20"
-          style={{ 
-            width: 'min(550px, 90vw)', 
-            height: 'min(700px, 75vh)', 
-            right: 'max(16px, 2vw)', 
-            top: '128px',
-            zIndex: 2000 
-          }}
-        >
-          <div className="flex items-center justify-between mb-4 pb-2 border-b border-white/10">
-            <div className="flex items-center gap-2">
-              <Terminal className="h-4 w-4 text-white" />
-              <h3 className="text-[11px] font-bold text-white uppercase tracking-wider">系统调试控制台</h3>
-            </div>
-            <div className="flex items-center gap-4">
-              <button 
-                onClick={() => setShowLogs(false)}
-                className="text-white/40 hover:text-white transition-colors"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
-            <div className="space-y-0.5 font-mono leading-tight">
-              {logs.map((log, i) => (
-                <div key={i} className="flex gap-2 group border-b border-white/5 py-0.5 last:border-0 hover:bg-white/5 transition-colors">
-                  <span className="text-[9px] text-white/10 select-none w-6 shrink-0 text-right">{i + 1}</span>
-                  <span className="text-[10px] text-white/80 group-hover:text-white break-all whitespace-pre-wrap">{log}</span>
-                </div>
-              ))}
-              <div ref={logEndRef} />
-            </div>
-          </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  </>
+        )}
+      </AnimatePresence>
+    </>
   );
 }
 

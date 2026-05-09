@@ -5,10 +5,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, ListChecks, History, ChevronRight, ChevronDown, Terminal, Activity, CheckCircle2, XCircle, Clock, Pin, PinOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { AuraRenderer } from "./AuraRenderer";
 
-export type AgentTaskPhase = "submitted" | "running" | "completed" | "failed" | "cancelled";
+export type AgentTaskPhase = "submitted" | "running" | "completed" | "failed" | "cancelled" | "lost";
 
 export type AgentTaskView = {
   runId: string;
@@ -223,7 +222,7 @@ export function TaskSidePanel({
                           </div>
 
                           <details className="mt-3 group">
-                            <summary className="flex items-center cursor-pointer text-[10px] text-white/30 hover:text-white/50 transition-colors list-none">
+                            <summary className="flex items-center cursor-pointer text-[10px] text-white/50 hover:text-white/70 transition-colors list-none">
                               <ChevronDown className="h-3 w-3 mr-1 transition-transform group-open:rotate-180" />
                               <span>查看原始请求内容</span>
                             </summary>
@@ -234,79 +233,49 @@ export function TaskSidePanel({
                           
                           <div className="mt-4 flex items-center gap-3">
                             <TaskStatusBadge phase={selectedTask.phase} />
-                            <span className="text-xs text-white/40">{selectedTask.providerName}</span>
+                            <span className="text-xs text-white/60">{selectedTask.providerName}</span>
                           </div>
                         </div>
                       </div>
 
                       {selectedTask.output ? (
-                        <div className="w-full max-w-none wrap-break-word overflow-x-hidden font-sans">
-                          <ReactMarkdown 
-                            remarkPlugins={[remarkGfm]}
-                            components={{
-                              h1: ({node, ...props}) => <h1 className="text-xl font-bold text-white mt-6 mb-3 tracking-tight" {...props} />,
-                              h2: ({node, ...props}) => <h2 className="text-lg font-bold text-white mt-5 mb-2.5 tracking-tight" {...props} />,
-                              h3: ({node, ...props}) => <h3 className="text-base font-bold text-white mt-4 mb-2 tracking-tight" {...props} />,
-                              p: ({node, ...props}) => <div className="text-[13px] leading-6 text-white/80 my-3 wrap-break-word" {...props} />,
-                              strong: ({node, ...props}) => <strong className="font-bold text-white" {...props} />,
-                              em: ({node, ...props}) => <em className="italic text-white/70" {...props} />,
-                              ul: ({node, ...props}) => <ul className="list-disc pl-5 my-3 space-y-1.5" {...props} />,
-                              ol: ({node, ...props}) => <ol className="list-decimal pl-5 my-3 space-y-1.5" {...props} />,
-                              li: ({node, ...props}) => <li className="text-[13px] text-white/80" {...props} />,
-                              code: ({node, inline, ...props}: any) => {
-                                const content = String(props.children).replace(/\n$/, "");
-                                const isMultiline = content.includes("\n");
-                                
-                                if (inline) {
-                                  return <code className="bg-white/10 text-white/90 px-1.5 py-0.5 rounded-md text-[11px] font-mono" {...props} />;
-                                }
-
-                                if (!isMultiline) {
-                                  return (
-                                    <div className="inline-flex items-center bg-white/10 text-white/90 px-3 py-1 rounded-lg border border-white/10 font-mono text-[11px] my-1">
-                                      <code {...props} />
-                                    </div>
-                                  );
-                                }
-
-                                return (
-                                  <div className="bg-white/5 p-4 rounded-xl overflow-x-auto my-4 border border-white/10 font-mono whitespace-pre text-[12px] text-white/90">
-                                    <code {...props} />
-                                  </div>
-                                );
-                              },
-                              table: ({node, ...props}) => (
-                                <div className="my-6 rounded-xl border border-white/10 overflow-hidden bg-white/2 shadow-xl">
-                                  <table className="w-full border-collapse border-spacing-0" {...props} />
-                                </div>
-                              ),
-                              thead: ({node, ...props}) => <thead className="bg-white/5 border-b border-white/10" {...props} />,
-                              th: ({node, ...props}) => <th className="p-3 text-left text-[12px] font-bold text-white uppercase tracking-wider" {...props} />,
-                              td: ({node, ...props}) => <td className="p-3 border-b border-white/5 text-[13px] text-white/80 align-top" {...props} />,
-                              blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-primary/40 pl-4 italic text-white/60 my-4" {...props} />,
-                            }}
-                          >
-                            {cleanText(selectedTask.output)}
-                          </ReactMarkdown>
-                        </div>
-                      ) : selectedTask.error ? (
-                        <div className="rounded-lg bg-destructive/10 p-4 text-sm text-destructive border border-destructive/20">
+                        <AuraRenderer 
+                          content={selectedTask.output} 
+                          onAction={(action, data) => {
+                            console.log(`[A2UI Action] ${action}`, data);
+                            // TODO: Send feedback to Agent
+                          }}
+                        />
+                      ) : (selectedTask.error || selectedTask.phase === "cancelled" || selectedTask.phase === "lost") ? (
+                        <div className={`rounded-lg p-4 text-sm border ${
+                          selectedTask.phase === "cancelled" 
+                            ? "bg-orange-500/10 text-orange-400 border-orange-500/20" 
+                            : selectedTask.phase === "lost"
+                            ? "bg-white/5 text-white/40 border-white/10"
+                            : "bg-destructive/10 text-destructive border-destructive/20"
+                        }`}>
                           <div className="flex items-center gap-2 font-semibold mb-1">
-                            <XCircle className="h-4 w-4" />
-                            <span>执行失败</span>
+                            {selectedTask.phase === "lost" ? <History className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                            <span>{
+                              selectedTask.phase === "cancelled" ? "任务已终止" : 
+                              selectedTask.phase === "lost" ? "任务状态丢失" :
+                              "执行失败"
+                            }</span>
                           </div>
-                          <p className="opacity-90">{selectedTask.error}</p>
+                          <p className="opacity-90">
+                            {selectedTask.phase === "lost" ? "由于 Agent 连接异常中断，该任务已无法继续追踪。" : (selectedTask.error || "未知错误")}
+                          </p>
                         </div>
                       ) : (
                         <div className="space-y-3">
-                          <div className="flex items-center gap-2 text-sm text-primary animate-pulse">
-                            <Activity className="h-4 w-4" />
+                          <div className="flex items-center gap-2 text-sm text-white/80 animate-pulse">
+                            <Activity className="h-4 w-4 text-blue-400" />
                             <span>正在执行任务...</span>
                           </div>
                           <div className="space-y-1">
                             {selectedTask.progress.map((p, i) => (
                               <div key={i} className="flex gap-2 text-xs text-white/60">
-                                <span className="text-white/20 select-none">{i+1}</span>
+                                <span className="text-white/40 select-none">{i+1}</span>
                                 <span>{p}</span>
                               </div>
                             ))}
@@ -330,9 +299,11 @@ function TaskStatusIcon({ phase, className }: { phase: AgentTaskPhase, className
   switch (phase) {
     case "completed": return <CheckCircle2 className={`${className} text-emerald-400`} />;
     case "failed": return <XCircle className={`${className} text-destructive`} />;
-    case "running": return <Activity className={`${className} text-primary animate-spin-slow`} />;
+    case "running": return <Activity className={`${className} text-blue-400 animate-spin-slow`} />;
     case "submitted": return <Clock className={`${className} text-white/40`} />;
-    case "cancelled": return <X className={`${className} text-white/20`} />;
+    case "cancelled": return <XCircle className={`${className} text-orange-400`} />;
+    case "lost": return <History className={`${className} text-white/30`} />;
+    default: return <Clock className={`${className} text-white/20`} />;
   }
 }
 
@@ -340,22 +311,27 @@ function TaskStatusBadge({ phase }: { phase: AgentTaskPhase }) {
   const styles = {
     completed: "bg-emerald-400/10 text-emerald-400 border-emerald-400/20",
     failed: "bg-destructive/10 text-destructive border-destructive/20",
-    running: "bg-primary/10 text-primary border-primary/20",
+    running: "bg-blue-400/10 text-blue-400 border-blue-400/20",
     submitted: "bg-white/5 text-white/60 border-white/10",
-    cancelled: "bg-white/5 text-white/40 border-white/10",
-  };
+    cancelled: "bg-orange-500/10 text-orange-400 border-orange-500/20",
+    lost: "bg-white/5 text-white/30 border-white/10",
+  } as const;
   
   const labels = {
     completed: "已完成",
     failed: "执行失败",
     running: "正在运行",
     submitted: "已提交",
-    cancelled: "已取消",
-  };
+    cancelled: "已终止",
+    lost: "连接丢失",
+  } as const;
+
+  const style = (styles as any)[phase] || styles.submitted;
+  const label = (labels as any)[phase] || "未知状态";
 
   return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${styles[phase]}`}>
-      {labels[phase]}
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${style}`}>
+      {label}
     </span>
   );
 }

@@ -124,6 +124,7 @@ export class AcpProviderAdapter implements AgentProviderAdapter {
       providerDir: this.dotDir,
       agent: "main",
       task: task.userRequest,
+      systemInstruction: task.identity.runtimeRoleDescription,
     });
 
     return { runId, providerId: this.id };

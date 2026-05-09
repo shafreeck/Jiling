@@ -16,6 +16,8 @@ interface TranscriptOverlayProps {
   pinned?: boolean;
 }
 
+import { AuraRenderer } from "./AuraRenderer";
+
 export function TranscriptOverlay({ messages, visible, pinned }: TranscriptOverlayProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -63,9 +65,9 @@ export function TranscriptOverlay({ messages, visible, pinned }: TranscriptOverl
                 key={msg.id}
                 initial={{ opacity: 0, y: 10, filter: "blur(5px)" }}
                 animate={{ 
-                  opacity: isVeryRecent ? 1.0 : (isRecent ? 0.7 : 0.2), 
+                  opacity: isVeryRecent ? 1.0 : (isRecent ? 0.85 : 0.45), 
                   y: 0, 
-                  filter: isRecent ? "blur(0px)" : "blur(4px)",
+                  filter: isRecent ? "blur(0px)" : "blur(1.5px)",
                   scale: isLast ? 1 : 0.98
                 }}
                 exit={{ opacity: 0, y: -10, filter: "blur(5px)" }}
@@ -76,13 +78,13 @@ export function TranscriptOverlay({ messages, visible, pinned }: TranscriptOverl
                   className={`rounded-2xl transition-all duration-500 ${
                     pinned 
                       ? "max-w-[95%] px-0 py-0.5 text-sm" 
-                      : "max-w-[85%] px-4 py-2 text-base border border-white/5 shadow-xl bg-black/20 backdrop-blur-md"
+                      : "max-w-[85%] px-4 py-2 text-base border border-white/10 shadow-xl bg-black/40 backdrop-blur-md"
                   } ${
-                    msg.role === "user" ? "text-white/90" : "text-white/80"
+                    msg.role === "user" ? "text-white" : "text-white/95"
                   }`}
                   style={{ textShadow: msg.role === "ai" ? "0 0 8px rgba(255,255,255,0.2)" : "none" }}
                 >
-                  {msg.text}
+                  <AuraRenderer content={msg.text} />
                 </div>
               </motion.div>
             );

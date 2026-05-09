@@ -55,7 +55,7 @@ export type JilingTaskEnvelope = {
   conversationContext: {
     recentUserIntent: string;
     relevantVoiceContext?: string;
-    locale: "zh-CN";
+    locale: string;
   };
   executionPolicy: {
     askBeforeRiskyChanges: boolean;

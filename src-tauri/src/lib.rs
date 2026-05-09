@@ -31,6 +31,13 @@ pub fn run() {
         )
         .setup(|app| {
             let manager = std::sync::Arc::new(acp::GlobalAcpManager::new(app.handle().clone()));
+            
+            // Reconcile tasks on startup to clear zombie entries
+            let manager_clone = manager.clone();
+            tauri::async_runtime::spawn(async move {
+                manager_clone.reconcile_tasks().await;
+            });
+
             app.manage(manager);
             Ok(())
         })

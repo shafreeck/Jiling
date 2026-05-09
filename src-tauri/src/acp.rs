@@ -35,6 +35,7 @@ enum AcpCommand {
     RunTask {
         agent_id: String,
         message: String,
+        system_instruction: Option<String>,
         run_id_tx: mpsc::Sender<Result<String, String>>,
     },
     AbortTask {
@@ -61,6 +62,7 @@ impl GlobalAcpManager {
         provider_dir: String,
         agent_id: String,
         message: String,
+        system_instruction: Option<String>,
     ) -> Result<String, String> {
         let tx = {
             if !self.tx_map.contains_key(&provider_dir) {
@@ -101,6 +103,7 @@ impl GlobalAcpManager {
         tx.send(AcpCommand::RunTask {
             agent_id,
             message,
+            system_instruction,
             run_id_tx,
         })
         .map_err(|e| e.to_string())?;
@@ -118,7 +121,24 @@ impl GlobalAcpManager {
                 run_id: run_id.clone(),
             });
         }
+        // Persist the cancelled status in the database
+        let db = self.db.lock().await;
+        let _ = db.update_task_status(&run_id, "cancelled");
         Ok(())
+    }
+
+    pub async fn reconcile_tasks(&self) {
+        let in_progress = {
+            let db = self.db.lock().await;
+            db.get_in_progress_tasks().unwrap_or_default()
+        };
+
+        for (run_id, _) in in_progress {
+            // Since this is called at startup, tasks stuck in progress are considered lost
+            let db = self.db.lock().await;
+            let _ = db.update_task_status(&run_id, "lost");
+            println!("[ACP] Reconciled zombie task: {}", run_id);
+        }
     }
 }
 
@@ -154,7 +174,7 @@ async fn acp_loop(
         tokio::select! {
             Some(cmd) = rx.recv(), if authenticated => {
                 match cmd {
-                    AcpCommand::RunTask { agent_id, message, run_id_tx } => {
+                    AcpCommand::RunTask { agent_id, message, system_instruction, run_id_tx } => {
                         let req_id = format!("run-{}", timestamp_ns());
                         pending_requests.insert(req_id.clone(), PendingRequest {
                             tx: run_id_tx,
@@ -163,9 +183,17 @@ async fn acp_loop(
                         });
 
                         let idempotency_key = format!("jiling-{}", timestamp_ns());
+                        
+                        // Combine message and system_instruction if provided
+                        let final_message = if let Some(si) = system_instruction {
+                            format!("{}\n\n{}", si, message)
+                        } else {
+                            message
+                        };
+
                         let mut params = json!({
                             "agentId": agent_id,
-                            "message": message,
+                            "message": final_message,
                             "idempotencyKey": idempotency_key
                         });
                         apply_provider_request_context(provider_dir, &mut params);
@@ -439,8 +467,9 @@ pub async fn execute_agent_acp_task(
     provider_dir: String,
     agent: String,
     task: String,
+    system_instruction: Option<String>,
 ) -> Result<String, String> {
-    state.run_task(provider_dir, agent, task).await
+    state.run_task(provider_dir, agent, task, system_instruction).await
 }
 
 #[tauri::command]
