@@ -2,10 +2,17 @@ import { useState, useEffect } from 'react';
 import { CheckCircle2, XCircle, FileCode, MessageSquare, Maximize2, X, Plus } from 'lucide-react';
 import { createPortal } from 'react-dom';
 
-interface CodeReviewProps {
-    fileName: string;
-    diff: string;
+interface FileItem {
+    filename: string;
+    content: string;
     language?: string;
+}
+
+interface CodeReviewProps {
+    fileName?: string;
+    diff?: string;
+    language?: string;
+    files?: FileItem[];
     status?: 'pending' | 'approved' | 'rejected';
     initialComment?: string;
     initialLineComments?: Record<number, string>;
@@ -13,7 +20,22 @@ interface CodeReviewProps {
 }
 
 const CodeReviewCard = (props: CodeReviewProps) => {
-    const { fileName, diff, language, onAction } = props;
+    const files = props.files || [
+        { 
+            filename: props.fileName || 'unknown', 
+            content: props.diff || '', 
+            language: props.language 
+        }
+    ];
+    
+    const [activeIndex, setActiveIndex] = useState(0);
+    const activeFile = files[activeIndex] || files[0];
+    
+    const fileName = activeFile.filename;
+    const diff = activeFile.content;
+    const language = activeFile.language;
+    
+    const { onAction } = props;
     const [status, setStatus] = useState<'pending' | 'approved' | 'rejected'>(props.status || 'pending');
     const [comment, setComment] = useState(props.initialComment || '');
     const [showComment, setShowComment] = useState(false);
@@ -100,6 +122,33 @@ const CodeReviewCard = (props: CodeReviewProps) => {
                     </div>
                 </div>
             </div>
+
+            {/* File Tabs */}
+            {files.length > 1 && (
+                <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '4px', marginBottom: '4px' }}>
+                    {files.map((file, idx) => (
+                        <button
+                            key={idx}
+                            onClick={() => setActiveIndex(idx)}
+                            style={{
+                                padding: '6px 12px',
+                                background: idx === activeIndex ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255,255,255,0.02)',
+                                border: '1px solid',
+                                borderColor: idx === activeIndex ? '#3b82f6' : 'rgba(255,255,255,0.1)',
+                                borderRadius: '8px',
+                                color: idx === activeIndex ? '#3b82f6' : 'rgba(255,255,255,0.6)',
+                                fontSize: '0.75rem',
+                                fontWeight: idx === activeIndex ? '700' : '400',
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap',
+                                transition: 'all 0.2s ease'
+                            }}
+                        >
+                            {file.filename.split('/').pop()}
+                        </button>
+                    ))}
+                </div>
+            )}
 
             {/* Diff View */}
             <div
