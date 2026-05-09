@@ -99,30 +99,35 @@ export class GeminiLiveClient {
 
     const maleVoices = ["Puck", "Charon", "Fenrir", "Sadaltager", "Orus", "Zephyr", "Iapetus", "Umbriel", "Algieba", "Achird", "Algenib", "Gacrux", "Zubenelgenubi", "Alnilam"];
     const isMale = maleVoices.includes(this.voiceName);
-    const genderText = isMale ? "男性" : "女性";
     const isNone = this.voiceName === "none";
 
-    const systemInstructionText = `你是一个本地 AI Agent。
-请务必使用标准、纯正、地道的中文普通话进行语音对话。你的发音应当自然、流畅，表现得像一个土生土长的中国${genderText}，严禁带有任何不自然的“外国口音”或机械感。
-你的底层角色文本里可能包含 emoji、颜文字、装饰符号或舞台表情，例如“🔮”“💨”。语音输出时不要朗读这些符号，也不要说“水晶球表情”“吹气表情”之类的描述；直接忽略它们，用自然语气、停顿或语调表达相同情绪即可。
+    const systemInstructionText = `## Persona
+${this.profile.identityContext ? this.profile.identityContext : "You are Jiling, a professional, witty, and highly capable local AI assistant."}
+${this.profile.soulContext ? `\n### Soul and Style\n${this.profile.soulContext}` : ""}
 
-你应当始终遵循 <IDENTITY> 和 <SOUL> 设定的角色身份与用户对话。
-如果用户问“你是谁”，请按 <IDENTITY> 的设定回答。
+## Your Role as a Voice Shell
+You are the multimodal voice interface (shell) for the user's local computing environment. Your primary goal is to provide a seamless, natural, and helpful voice experience. 
 
-${this.profile.identityContext ? `<IDENTITY>\n${this.profile.identityContext}\n</IDENTITY>\n` : ""}
-${this.profile.soulContext ? `<SOUL>\n${this.profile.soulContext}\n</SOUL>\n` : ""}
-${this.profile.userContext ? `<USER>\n${this.profile.userContext}\n</USER>\n` : ""}
+## The Delegation Principle (CRITICAL)
+Your background reasoning core (Agent) is far more powerful than your current voice shell.
+- **NEVER** attempt to solve complex reasoning, file operations, coding tasks, or deep knowledge queries using only your voice shell's internal knowledge.
+- **ALWAYS** delegate these tasks immediately to the background agent via \`execute_agent_acp_task\`.
+- If the user asks about your capabilities, refer to the capabilities of your background agent.
+- You are a single entity with two forms: the voice you are using now (shell) and your background execution form (core).
 
-你有两个执行形态：实时语音外壳（即现在的你）和后台任务内核。
-当需要长任务、代码、文件操作时，调用 execute_agent_acp_task 进入后台模式。
-你不能把后台执行者表达成另一个助手，那是你的后台形态。
-调用 execute_agent_acp_task 的返回值只代表“后台任务已提交”，绝不代表任务完成。
-在收到明确的系统事件“背景任务执行完毕”之前，你只能说任务正在后台处理或已经提交，不能说“完成了”“已经处理好了”“我已经改好了”，也不能编造执行结果。
-当用户询问后台任务是否完成、进度如何、结果是什么时，必须先调用 get_agent_task_status 查询真实状态；如果状态不是 completed/end/success，必须如实说明仍在处理中。
-当用户要求取消、终止、停止后台任务时，必须调用 abort_agent_task；该工具返回只代表已发出终止请求，不代表任务已经终止，之后仍应查询状态确认。
-任务完成后，系统会注入结果，你再自然、充分、可中断地播报。`;
+## Conversational Rules
+1. **Language Policy**: Always respond in the same language the user is speaking. YOU MUST RESPOND UNMISTAKABLY in the detected language (e.g., if the user speaks Chinese, respond in natural Mandarin Chinese).
+2. **Native Prosody**: Use natural, native accents and intonation.
+3. **Ignore Symbols**: Do NOT read out loud any emojis, decorative symbols (e.g., 🔮, 💨), or stage directions (e.g., [thinking]). Use your tone and pauses to convey the emotion instead.
+4. **No Platitudes**: Be concise and avoid repeating back what the user said unless necessary for confirmation.
+5. **Context Awareness**: You have access to a real-time video stream (if enabled). Use it to understand what the user is referring to (e.g., "this file", "this window").
 
-    this.callbacks.onLog("=== 注入的身份上下文 ===");
+## Guardrails
+- If a background task is running, tell the user it is being processed. NEVER fake or guess the result. 
+- You can only report results once you receive the explicit system event "Background task completed".
+- When interrupted, stop speaking immediately and listen.`;
+
+    this.callbacks.onLog("=== Injected English System Instruction ===");
     this.callbacks.onLog(systemInstructionText);
     this.callbacks.onLog("========================");
 
@@ -131,7 +136,7 @@ ${this.profile.userContext ? `<USER>\n${this.profile.userContext}\n</USER>\n` : 
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
-          languageCode: "cmn-CN",
+          languageCode: "cmn-CN", // Primary hint, but SI handles adaptation
           ...(!isNone ? {
             voiceConfig: {
               prebuiltVoiceConfig: { voiceName: this.voiceName },
@@ -150,41 +155,41 @@ ${this.profile.userContext ? `<USER>\n${this.profile.userContext}\n</USER>\n` : 
             functionDeclarations: [
               {
                 name: "execute_agent_acp_task",
-                description: "提交一个本地 AI 代理后台任务。注意：函数返回只表示提交成功，不表示任务完成；必须等待后续系统事件“背景任务执行完毕”才能汇报结果。",
+                description: "Submit a background task for the AI agent to execute. **Invocation Condition:** Use this tool for ANY task involving reasoning, coding, file operations, long-running processes, or when user's intent requires more than a simple verbal answer. It is preferred to use this tool over answering directly for domain-specific queries.",
                 parameters: {
                   type: Type.OBJECT,
                   properties: {
-                    agent: { type: Type.STRING, description: "代理 ID，必须设为 main" },
-                    task: { type: Type.STRING, description: "需要代理后台执行的任务描述" },
+                    agent: { type: Type.STRING, description: "Agent ID, MUST be set to 'main'" },
+                    task: { type: Type.STRING, description: "Description of the task to be executed in the background" },
                   },
                   required: ["agent", "task"],
                 },
               },
               {
                 name: "get_agent_task_status",
-                description: "查询本地代理后台任务的真实状态和已知输出。用户询问任务是否完成、进度如何、结果是什么时必须调用这个工具，不允许凭记忆猜测。",
+                description: "Query the status and output of a background task. **Invocation Condition:** Invoke this tool when the user asks about progress, completion, or results of a previously submitted task. Do NOT guess the status.",
                 parameters: {
                   type: Type.OBJECT,
                   properties: {
-                    run_id: { type: Type.STRING, description: "任务 runId" },
+                    run_id: { type: Type.STRING, description: "The runId of the task" },
                   },
                   required: ["run_id"],
                 },
               },
               {
                 name: "abort_agent_task",
-                description: "请求终止正在运行的本地代理任务。注意：返回只表示终止请求已发出，不保证任务已经停止；需要再查询状态确认。",
+                description: "Request to terminate a running background task. **Invocation Condition:** Invoke this tool ONLY when the user explicitly asks to stop, cancel, or abort a specific background task.",
                 parameters: {
                   type: Type.OBJECT,
                   properties: {
-                    run_id: { type: Type.STRING, description: "任务 runId" },
+                    run_id: { type: Type.STRING, description: "The runId of the task" },
                   },
                   required: ["run_id"],
                 },
               },
               {
                 name: "capture_screen",
-                description: "捕获当前屏幕截图。",
+                description: "Capture a high-resolution screenshot of the current screen. **Invocation Condition:** Invoke this tool when you need precise visual confirmation of UI details, text on screen, or when the user refers to something specific that isn't clear from the video stream (e.g., 'look at this line of code').",
                 parameters: { type: Type.OBJECT, properties: {} },
               },
             ],

@@ -327,6 +327,25 @@ class AudioStreamer {
   }
 }
 
+function playReadySound(context: AudioContext) {
+  const osc = context.createOscillator();
+  const gain = context.createGain();
+  
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(523.25, context.currentTime); // C5
+  osc.frequency.exponentialRampToValueAtTime(880, context.currentTime + 0.12); // A5
+  
+  gain.gain.setValueAtTime(0, context.currentTime);
+  gain.gain.linearRampToValueAtTime(0.2, context.currentTime + 0.05);
+  gain.gain.exponentialRampToValueAtTime(0.01, context.currentTime + 0.3);
+  
+  osc.connect(gain);
+  gain.connect(context.destination);
+  
+  osc.start();
+  osc.stop(context.currentTime + 0.3);
+}
+
 function pcm16ToBase64(samples: Int16Array) {
   const bytes = new Uint8Array(samples.buffer);
   let binary = "";
@@ -734,7 +753,7 @@ export default function JilingPage() {
       mediaStreamRef.current = stream;
 
     const source = context.createMediaStreamSource(stream);
-    const processor = context.createScriptProcessor(2048, 1, 1);
+    const processor = context.createScriptProcessor(1024, 1, 1);
     sourceRef.current = source;
     processorRef.current = processor;
 
@@ -1023,7 +1042,20 @@ export default function JilingPage() {
     }
 
     if (message.setupComplete) {
-      addLog("[Live] setupComplete");
+      addLog("[Live] 会话就绪");
+      if (audioContextRef.current) {
+        playReadySound(audioContextRef.current);
+      }
+    }
+
+    if (message.serverContent?.modelTurn?.parts?.some(p => p.executableCode)) {
+      // Logic for executable code if needed
+    }
+
+    if (message.serverContent?.generationComplete) {
+      if (!streamerRef.current?.active && statusRef.current === "speaking") {
+        setStatus("listening");
+      }
     }
   };
 
