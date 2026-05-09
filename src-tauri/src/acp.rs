@@ -1,14 +1,14 @@
 use crate::db::Db;
-use base64::{Engine as _, engine::general_purpose};
+use base64::{engine::general_purpose, Engine as _};
 use dashmap::DashMap;
-use ed25519_dalek::{Signer, SigningKey, pkcs8::DecodePrivateKey};
+use ed25519_dalek::{pkcs8::DecodePrivateKey, Signer, SigningKey};
 use futures_util::{SinkExt, StreamExt};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::fs;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::Emitter;
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{mpsc, Mutex};
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -27,7 +27,6 @@ pub struct GlobalAcpManager {
 
 struct PendingRequest {
     tx: mpsc::Sender<Result<String, String>>,
-    agent_id: String,
     message: String,
 }
 
@@ -66,18 +65,20 @@ impl GlobalAcpManager {
 
     pub async fn run_task(
         &self,
+        provider_id: String,
         provider_dir: String,
         agent_id: String,
         message: String,
         system_instruction: Option<String>,
     ) -> Result<String, String> {
         let tx = {
-            if !self.tx_map.contains_key(&provider_dir) {
+            if !self.tx_map.contains_key(&provider_id) {
                 let (tx, mut rx) = mpsc::unbounded_channel::<AcpCommand>();
                 let db_clone = Arc::clone(&self.db);
                 let pending_clone = Arc::clone(&self.pending_requests);
                 let app_handle_clone = self.app_handle.clone();
                 let provider_dir_clone = provider_dir.clone();
+                let provider_id_clone = provider_id.clone();
 
                 tauri::async_runtime::spawn(async move {
                     loop {
@@ -86,6 +87,7 @@ impl GlobalAcpManager {
                             &mut rx,
                             Arc::clone(&db_clone),
                             Arc::clone(&pending_clone),
+                            &provider_id_clone,
                             &provider_dir_clone,
                         )
                         .await
@@ -99,10 +101,10 @@ impl GlobalAcpManager {
                     }
                 });
 
-                self.tx_map.insert(provider_dir.clone(), tx.clone());
+                self.tx_map.insert(provider_id.clone(), tx.clone());
                 tx
             } else {
-                self.tx_map.get(&provider_dir).unwrap().clone()
+                self.tx_map.get(&provider_id).unwrap().clone()
             }
         };
 
@@ -158,7 +160,8 @@ impl GlobalAcpManager {
 
     pub async fn update_task_output(&self, run_id: String, output: String) -> Result<(), String> {
         let db = self.db.lock().await;
-        db.set_task_output(&run_id, &output).map_err(|e| e.to_string())
+        db.set_task_output(&run_id, &output)
+            .map_err(|e| e.to_string())
     }
 
     pub async fn reconcile_tasks(&self) {
@@ -194,6 +197,7 @@ async fn acp_loop(
     rx: &mut mpsc::UnboundedReceiver<AcpCommand>,
     db: Arc<Mutex<Db>>,
     pending_requests: Arc<DashMap<String, PendingRequest>>,
+    provider_id: &str,
     provider_dir: &str,
 ) -> Result<(), String> {
     let port = get_active_port(provider_dir);
@@ -203,10 +207,12 @@ async fn acp_loop(
 
     let mut authenticated = false;
     let (device_id, device_token, signing_key) = load_identity(provider_dir)?;
-    
+
     // Map dynamically generated AutoClaw runIds back to original Jiling runIds
-    let mut virtual_run_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-    let mut base_outputs: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut virtual_run_map: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+    let mut base_outputs: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
 
     loop {
         tokio::select! {
@@ -216,12 +222,11 @@ async fn acp_loop(
                         let req_id = format!("run-{}", timestamp_ns());
                         pending_requests.insert(req_id.clone(), PendingRequest {
                             tx: run_id_tx,
-                            agent_id: agent_id.clone(),
                             message: message.clone(),
                         });
 
                         let idempotency_key = format!("jiling-{}", timestamp_ns());
-                        
+
                         // Combine message and system_instruction into a single message field for compatibility
                         let final_message = if let Some(si) = system_instruction {
                             format!("{}\n\n{}", si, message)
@@ -234,7 +239,7 @@ async fn acp_loop(
                             "agentId": agent_id,
                             "idempotencyKey": idempotency_key,
                         });
-                        
+
                         apply_provider_request_context(provider_dir, &mut params);
 
                         let msg = json!({
@@ -253,7 +258,7 @@ async fn acp_loop(
                     }
                     AcpCommand::RespondAction { agent_id, run_id, request_id, action, data } => {
                         println!("[ACP] Sending interaction feedback for run_id={} on agent={}", run_id, agent_id);
-                        
+
                         let feedback_data = json!({
                             "type": "a2ui_feedback",
                             "requestId": request_id,
@@ -265,23 +270,23 @@ async fn acp_loop(
 
                         let req_id = format!("respond|{}|{}", run_id, timestamp_ns());
                         let idempotency_key = format!("jiling-{}", timestamp_ns());
-                        
+
                         // Use "main" as the hardcoded agentId, just like runTask does
                         let mut params = json!({
                             "message": message,
                             "agentId": "main",
                             "idempotencyKey": idempotency_key
                         });
-                        
+
                         apply_provider_request_context(provider_dir, &mut params);
 
                         let msg = json!({
-                            "type": "req", 
-                            "method": "agent", 
+                            "type": "req",
+                            "method": "agent",
                             "id": req_id,
                             "params": params
                         });
-                        
+
                         if let Err(e) = ws_write.send(Message::Text(msg.to_string())).await {
                             eprintln!("[ACP] Failed to send feedback message: {}", e);
                         } else {
@@ -325,12 +330,12 @@ async fn acp_loop(
                         let payload = &v["payload"];
                         let original_run_id = payload["runId"].as_str().unwrap_or("").to_string();
                         let mut mapped_run_id = original_run_id.clone();
-                        
+
                         // Map the dynamically generated AutoClaw runId back to the original task
                         if let Some(mapped_id) = virtual_run_map.get(&original_run_id) {
                             mapped_run_id = mapped_id.clone();
                         }
-                        
+
                         let stream = payload["stream"].as_str().unwrap_or("");
 
                         let db_lock = db.lock().await;
@@ -359,7 +364,7 @@ async fn acp_loop(
                                     data["error"] = json!(message);
                                 }
                             }
-                            
+
                             let _ = db_lock.update_task_status(&mapped_run_id, phase);
                              app_handle.emit("acp-event", AcpEvent {
                                 run_id: mapped_run_id.clone(),
@@ -379,7 +384,7 @@ async fn acp_loop(
                                         let _ = pending.tx.send(Err("Agent response missing runId".to_string())).await;
                                     } else {
                                         let db_lock = db.lock().await;
-                                        let _ = db_lock.insert_task(&run_id, provider_dir, &pending.message);
+                                        let _ = db_lock.insert_task(&run_id, provider_id, &pending.message);
                                         let _ = pending.tx.send(Ok(run_id)).await;
                                     }
                                 } else {
@@ -411,11 +416,11 @@ async fn acp_loop(
                                 if parts.len() == 3 {
                                     let old_run_id = parts[1].to_string();
                                     virtual_run_map.insert(new_run_id.to_string(), old_run_id.clone());
-                                    
+
                                     let db_lock = db.lock().await;
                                     let old_output = db_lock.get_task_output(&old_run_id).unwrap_or_default();
                                     base_outputs.insert(new_run_id.to_string(), old_output);
-                                    
+
                                     println!("[ACP] Mapped dynamically generated AutoClaw runId {} to original Jiling runId {}", new_run_id, old_run_id);
                                 }
                             }
@@ -571,12 +576,15 @@ fn timestamp_ns() -> u128 {
 #[tauri::command]
 pub async fn execute_agent_acp_task(
     state: tauri::State<'_, Arc<GlobalAcpManager>>,
+    provider_id: String,
     provider_dir: String,
     agent: String,
     task: String,
     system_instruction: Option<String>,
 ) -> Result<String, String> {
-    state.run_task(provider_dir, agent, task, system_instruction).await
+    state
+        .run_task(provider_id, provider_dir, agent, task, system_instruction)
+        .await
 }
 
 #[tauri::command]
@@ -621,7 +629,9 @@ pub async fn respond_agent_task_action(
     action: String,
     data: Value,
 ) -> Result<(), String> {
-    state.respond_action(agent_id, run_id, request_id, action, data).await
+    state
+        .respond_action(agent_id, run_id, request_id, action, data)
+        .await
 }
 
 #[tauri::command]

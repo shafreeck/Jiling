@@ -121,6 +121,7 @@ export class AcpProviderAdapter implements AgentProviderAdapter {
     // Currently, our ACP backend expects `agent` and `task`
     // We pass `main` as the default agent for now, or read from config
     const runId = await invoke<string>("execute_agent_acp_task", {
+      providerId: this.id,
       providerDir: this.dotDir,
       agent: "main",
       task: task.userRequest,
