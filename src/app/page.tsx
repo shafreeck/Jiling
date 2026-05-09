@@ -664,16 +664,28 @@ export default function JilingPage() {
 
   const appendTaskProgress = (runId: string, text: string) => {
     setAgentTasks((previous) =>
-      previous.map((task) =>
-        task.runId === runId
-          ? {
-              ...task,
-              phase: task.phase === "submitted" ? "running" : task.phase,
-              progress: [...task.progress, text].slice(-24),
-              updatedAt: Date.now(),
-            }
-          : task
-      )
+      previous.map((task) => {
+        if (task.runId !== runId) return task;
+
+        const newProgress = [...task.progress];
+        const lastIndex = newProgress.length - 1;
+        const lastText = newProgress[lastIndex];
+
+        // If the new text is a continuation of the last progress item, replace it
+        // This handles streaming providers like openclaw that send full snapshots
+        if (lastText && text.startsWith(lastText)) {
+          newProgress[lastIndex] = text;
+        } else {
+          newProgress.push(text);
+        }
+
+        return {
+          ...task,
+          phase: task.phase === "submitted" ? "running" : task.phase,
+          progress: newProgress.slice(-24),
+          updatedAt: Date.now(),
+        };
+      })
     );
   };
 
