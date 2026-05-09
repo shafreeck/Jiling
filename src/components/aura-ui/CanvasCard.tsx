@@ -4,7 +4,7 @@ import ReactECharts from 'echarts-for-react';
 interface Node {
     id: string;
     label: string;
-    status: 'processing' | 'success' | 'error';
+    color?: 'red' | 'green' | 'blue' | 'yellow' | 'orange';
     size?: 'small' | 'medium' | 'large';
 }
 
@@ -38,11 +38,13 @@ const CanvasCard = ({ nodes, links }: CanvasCardProps) => {
         return () => resizeObserver.disconnect();
     }, []);
 
-    // Convert status to color
-    const getStatusColor = (status: string, alpha: number = 1) => {
-        if (status === 'success') return `rgba(16, 185, 129, ${alpha})`;
-        if (status === 'processing') return `rgba(59, 130, 246, ${alpha})`;
-        if (status === 'error') return `rgba(239, 68, 68, ${alpha})`;
+    // Convert color name to rgba
+    const getColor = (color: string | undefined, alpha: number = 1) => {
+        if (color === 'green') return `rgba(16, 185, 129, ${alpha})`;
+        if (color === 'blue') return `rgba(59, 130, 246, ${alpha})`;
+        if (color === 'red') return `rgba(239, 68, 68, ${alpha})`;
+        if (color === 'yellow') return `rgba(245, 158, 11, ${alpha})`;
+        if (color === 'orange') return `rgba(249, 115, 22, ${alpha})`;
         return `rgba(255, 255, 255, ${alpha})`;
     };
 
@@ -86,14 +88,14 @@ const CanvasCard = ({ nodes, links }: CanvasCardProps) => {
                     id: node.id,
                     name: node.id, // Used for linking
                     nodeLabel: node.label, // Custom field for display
-                    status: node.status,
+                    color: node.color,
                     symbolSize: node.size === 'large' ? 45 : node.size === 'medium' ? 30 : 15,
                     itemStyle: {
-                        color: getStatusColor(node.status, 0.2),
-                        borderColor: getStatusColor(node.status, 1),
+                        color: getColor(node.color, 0.2),
+                        borderColor: getColor(node.color, 1),
                         borderWidth: 2,
                         shadowBlur: 20,
-                        shadowColor: getStatusColor(node.status, 0.8)
+                        shadowColor: getColor(node.color, 0.8)
                     },
                     label: {
                         show: true,
@@ -106,8 +108,8 @@ const CanvasCard = ({ nodes, links }: CanvasCardProps) => {
                     },
                     blur: {
                         itemStyle: {
-                            borderColor: getStatusColor(node.status, 0.4),
-                            color: getStatusColor(node.status, 0.1),
+                            borderColor: getColor(node.color, 0.4),
+                            color: getColor(node.color, 0.1),
                             shadowBlur: 5
                         },
                         label: {
