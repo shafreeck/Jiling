@@ -142,19 +142,18 @@ impl GlobalAcpManager {
         action: String,
         data: Value,
     ) -> Result<(), String> {
-
-
-        // Send feedback to agent
-        for entry in self.tx_map.iter() {
-            let _ = entry.value().send(AcpCommand::RespondAction {
+        if let Some(agent_tx) = self.tx_map.get(&agent_id) {
+            let _ = agent_tx.value().send(AcpCommand::RespondAction {
                 agent_id: agent_id.clone(),
-                run_id: run_id.clone(),
-                request_id: request_id.clone(),
-                action: action.clone(),
-                data: data.clone(),
+                run_id,
+                request_id,
+                action,
+                data,
             });
+            Ok(())
+        } else {
+            Err(format!("Provider {} not connected or not found", agent_id))
         }
-        Ok(())
     }
 
     pub async fn update_task_output(&self, run_id: String, output: String) -> Result<(), String> {
