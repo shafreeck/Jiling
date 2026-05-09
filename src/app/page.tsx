@@ -1168,6 +1168,9 @@ Available components:
 - "ApprovalCard": For task approvals or confirmations. Props: { "title": string, "description": string, "severity": "info"|"warning"|"critical", "actionLabel": string }. Note: "description" supports Markdown (tables, formatting).
 - "CodeReviewCard": For code reviews. Props: { "files": Array<{ "filename": string, "content": string, "language": string }> }
 - "NoteCard": For displaying markdown notes or summaries. Props: { "content": string }
+- "ChartCard": For displaying charts. Props: { "title": string, "type": "line"|"bar", "data": Array<{ "label": string, "value": number }>, "color"?: string }
+- "TaskListCard": For displaying lists of tasks. Props: { "title": string, "tasks": Array<{ "id": string, "title": string, "completed": boolean, "description"?: string, "cancelled"?: boolean }> }
+- "CanvasCard": For displaying topology graphs (mind maps, task flows). Props: { "nodes": Array<{ "id": string, "label": string, "status": "processing"|"success"|"error", "size"?: "small"|"medium"|"large" }>, "links": Array<{ "source": string, "target": string, "label"?: string }> }
 
 Output format: { "type": "a2ui", "requestId": "unique_id", "payload": { "component": "ComponentName", "props": {...} } }`;
 

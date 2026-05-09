@@ -31,7 +31,7 @@ export class AcpProviderAdapter implements AgentProviderAdapter {
   id: string;
   displayName: string;
   private dotDir: string;
-  
+
   constructor(id: string, displayName: string, dotDir: string) {
     this.id = id;
     this.displayName = displayName;
@@ -73,7 +73,7 @@ export class AcpProviderAdapter implements AgentProviderAdapter {
     try {
       const home = await homeDir();
       const workspaceDir = await join(home, this.dotDir, "workspace");
-      
+
       const identity = await this.readFileIfExists(await join(workspaceDir, "IDENTITY.md"));
       const soul = await this.readFileIfExists(await join(workspaceDir, "SOUL.md"));
       const user = await this.readFileIfExists(await join(workspaceDir, "USER.md"));
@@ -120,17 +120,8 @@ export class AcpProviderAdapter implements AgentProviderAdapter {
   async submitTask(task: JilingTaskEnvelope): Promise<AgentTaskRef> {
     // Currently, our ACP backend expects `agent` and `task`
     // We pass `main` as the default agent for now, or read from config
-    
-    // 后端默认提示词已经包含了 ApprovalCard, CodeReviewCard, NoteCard。
-    // 我们在这里**只追加**我们新开发的 3 个组件，不需要在运行时做任何愚蠢的字符串判断！
-    const additionalA2uiDocs = `
-## Additional A2UI Components
-- "ChartCard": For displaying charts. Props: { "title": string, "type": "line"|"bar", "data": Array<{ "label": string, "value": number }>, "color"?: string }
-- "TaskListCard": For displaying lists of tasks. Props: { "title": string, "tasks": Array<{ "id": string, "title": string, "completed": boolean, "description"?: string, "cancelled"?: boolean }> }
-- "CanvasCard": For displaying topology graphs (mind maps, task flows). Props: { "nodes": Array<{ "id": string, "label": string, "status": "processing"|"success"|"error", "size"?: "small"|"medium"|"large" }>, "links": Array<{ "source": string, "target": string, "label"?: string }> }
-`;
-    
-    const systemInstruction = `${task.identity.runtimeRoleDescription || ""}\n\n${additionalA2uiDocs.trim()}`;
+
+    const systemInstruction = `${task.identity.runtimeRoleDescription || ""}`;
 
     const runId = await invoke<string>("execute_agent_acp_task", {
       providerId: this.id,
