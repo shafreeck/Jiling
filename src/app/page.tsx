@@ -7,7 +7,9 @@ import {
   Activity,
   Bot,
   ChevronDown,
+  ChevronRight,
   CircleStop,
+  Clock,
   Eraser,
   KeyRound,
   ListChecks,
@@ -1303,57 +1305,143 @@ export default function JilingPage() {
     status === "thinking" ? "正在执行" :
     "正在回答";
 
-  const selectedTask = useMemo(() => {
-    if (!agentTasks.length) return null;
-    return agentTasks.find((task) => task.runId === selectedTaskId) || agentTasks[0];
-  }, [agentTasks, selectedTaskId]);
-
   const runningTasks = agentTasks.filter((task) => task.phase === "submitted" || task.phase === "running");
-  const latestOutput = selectedTask?.output || selectedTask?.progress.at(-1) || "本地代理的完整输出会显示在这里。";
-  const currentProviderName = providerLabel(selectedProviderId, providers.find((provider) => provider.id === selectedProviderId)?.name);
 
   const readingModeContent = (isTaskPinned && !isSharing && !isVideoOn) ? (
-    <div className="flex h-full w-full flex-col overflow-hidden">
-      <div className="flex items-center justify-between border-b border-white/5 bg-white/5 px-6 py-2 backdrop-blur-md">
-        <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-primary/20 bg-primary/10">
-            <ListChecks className="h-3.5 w-3.5 text-primary" />
+    <div className="flex h-full w-full flex-col overflow-hidden bg-black selection:bg-blue-600/40">
+      <style dangerouslySetInnerHTML={{ __html: `
+        .reading-mode-content ::selection {
+          background-color: rgba(59, 130, 246, 0.4) !important;
+        }
+        .reading-mode-content *::selection {
+          background-color: rgba(59, 130, 246, 0.4) !important;
+        }
+      ` }} />
+      
+      <div className="flex items-center justify-between border-b border-white/5 bg-white/2 px-6 py-3 backdrop-blur-md">
+        <div className="flex items-center gap-3 overflow-hidden">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10">
+            <ListChecks className="h-4 w-4 text-primary" />
           </div>
-          <h3 className="text-base font-bold text-white">{activeTask?.title || "等待任务中..."}</h3>
+          <div className="flex flex-col min-w-0">
+            <h3 className="text-sm font-bold text-white line-clamp-2 leading-tight">
+              {activeTask?.title || "等待任务中..."}
+            </h3>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="text-[10px] text-white/40 font-mono uppercase tracking-wider">{activeTask?.providerName || "system"}</span>
+              {activeTask?.phase === "running" && (
+                <span className="flex items-center gap-1 text-[10px] text-primary/80">
+                  <Activity className="h-2.5 w-2.5 animate-pulse" />
+                  Running
+                </span>
+              )}
+            </div>
+          </div>
         </div>
         <Button 
           variant="ghost" 
           size="sm" 
           onClick={() => setIsTaskPinned(false)}
-          className="h-7 rounded-full bg-white/5 px-3 text-[10px] text-white/60 hover:bg-white/10 hover:text-white transition-all"
+          className="h-8 shrink-0 rounded-full bg-white/5 px-4 text-xs text-white/60 hover:bg-white/10 hover:text-white transition-all ml-4"
         >
-          <AppWindow className="mr-1.5 h-3 w-3" />
+          <AppWindow className="mr-2 h-3.5 w-3.5" />
           退出阅读模式
         </Button>
       </div>
 
-      <div className="relative flex-1 min-h-0 overflow-hidden">
+      <div className="relative flex-1 min-h-0 overflow-hidden reading-mode-content">
         <ScrollArea className="h-full w-full">
-          <div className="prose max-w-none px-6 py-4 pb-32">
-            {activeTask?.output ? (
-              <div className="prose prose-invert prose-xs max-w-none wrap-break-word overflow-x-hidden
-                          prose-headings:text-white prose-headings:font-bold prose-headings:tracking-tight prose-headings:mb-2 prose-headings:mt-4 prose-headings:wrap-break-word
-                          prose-h1:text-base prose-h2:text-sm prose-h3:text-xs
-                          prose-p:text-white/70 prose-p:leading-relaxed prose-p:my-1.5 prose-p:text-[10.5px] prose-p:wrap-break-word
-                          prose-strong:text-white prose-li:text-[10.5px] prose-li:text-white/70
-                          prose-table:w-full prose-table:border-collapse prose-table:my-4 prose-table:table-fixed
-                          prose-th:bg-white/5 prose-th:p-2 prose-th:text-left prose-th:text-[10px] prose-th:font-bold prose-th:text-white/40 prose-th:uppercase prose-th:tracking-wider
-                          prose-td:p-2 prose-td:border-t prose-td:border-white/5 prose-td:text-white/80 prose-td:text-[10.5px] prose-td:break-all
-                          selection:bg-primary/30 font-sans"
-              >
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {cleanTranscriptText(activeTask.output)}
-                </ReactMarkdown>
+          <div className="p-10 pb-40 max-w-4xl mx-auto">
+            {activeTask ? (
+              <div className="space-y-8">
+                {/* Request Header with Collapse */}
+                <div className="bg-white/5 rounded-2xl border border-white/10 overflow-hidden shadow-2xl">
+                  <details className="group">
+                    <summary className="flex items-center justify-between p-5 cursor-pointer hover:bg-white/5 transition-colors list-none">
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center">
+                          <Terminal className="h-4 w-4 text-primary" />
+                        </div>
+                        <span className="text-sm font-bold text-white tracking-tight">原始请求内容</span>
+                      </div>
+                      <ChevronRight className="h-4 w-4 text-white/30 group-open:rotate-90 transition-transform" />
+                    </summary>
+                    <div className="px-5 pb-5 pt-2 border-t border-white/5 bg-black/40">
+                      <p className="text-[13px] leading-relaxed text-white/70 font-medium tracking-tight">
+                        {activeTask.title}
+                      </p>
+                    </div>
+                  </details>
+                </div>
+
+                <div className="h-px w-full bg-linear-to-r from-transparent via-white/10 to-transparent" />
+
+                {/* Output Content */}
+                {activeTask.output ? (
+                  <div className="w-full max-w-none wrap-break-word overflow-x-hidden font-sans">
+                    <ReactMarkdown 
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        h1: ({node, ...props}) => <h1 className="text-xl font-bold text-white mt-8 mb-4 tracking-tight" {...props} />,
+                        h2: ({node, ...props}) => <h2 className="text-lg font-bold text-white mt-6 mb-3 tracking-tight" {...props} />,
+                        h3: ({node, ...props}) => <h3 className="text-base font-bold text-white mt-5 mb-2 tracking-tight" {...props} />,
+                        div: ({node, ...props}) => <div className="text-[13px] leading-7 text-white/80 my-4 wrap-break-word" {...props} />,
+                        p: ({node, ...props}) => <div className="text-[13px] leading-7 text-white/80 my-4 wrap-break-word" {...props} />,
+                        strong: ({node, ...props}) => <strong className="font-bold text-white" {...props} />,
+                        em: ({node, ...props}) => <em className="italic text-white/70" {...props} />,
+                        ul: ({node, ...props}) => <ul className="list-disc pl-5 my-4 space-y-2" {...props} />,
+                        ol: ({node, ...props}) => <ol className="list-decimal pl-5 my-4 space-y-2" {...props} />,
+                        li: ({node, ...props}) => <li className="text-[13px] text-white/80" {...props} />,
+                        code: ({node, inline, ...props}: any) => {
+                          const content = String(props.children).replace(/\n$/, "");
+                          const isMultiline = content.includes("\n");
+                          
+                          if (inline) {
+                            return <code className="bg-white/10 text-white/90 px-1.5 py-0.5 rounded-md text-[11px] font-mono" {...props} />;
+                          }
+
+                          if (!isMultiline) {
+                            return (
+                              <div className="inline-flex items-center bg-white/10 text-white/90 px-3 py-1.5 rounded-lg border border-white/10 font-mono text-[11px] my-1">
+                                <code {...props} />
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div className="bg-white/5 p-5 rounded-xl overflow-x-auto my-5 border border-white/10 font-mono whitespace-pre text-[12px] text-white/90">
+                              <code {...props} />
+                            </div>
+                          );
+                        },
+                        table: ({node, ...props}) => (
+                          <div className="my-8 rounded-2xl border border-white/10 overflow-hidden bg-white/2 shadow-2xl">
+                            <table className="w-full border-collapse border-spacing-0" {...props} />
+                          </div>
+                        ),
+                        thead: ({node, ...props}) => <thead className="bg-white/5 border-b border-white/10" {...props} />,
+                        th: ({node, ...props}) => <th className="p-4 text-left text-[12px] font-bold text-white uppercase tracking-wider" {...props} />,
+                        td: ({node, ...props}) => <td className="p-4 border-b border-white/5 text-[13px] text-white/80 align-top" {...props} />,
+                        blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-primary/40 pl-5 italic text-white/60 my-6" {...props} />,
+                        hr: ({node, ...props}) => <hr className="my-10 border-white/10" {...props} />,
+                      }}
+                    >
+                      {cleanTranscriptText(activeTask.output)}
+                    </ReactMarkdown>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-32 text-center">
+                    <div className="h-16 w-16 rounded-3xl bg-primary/5 flex items-center justify-center mb-6 animate-pulse">
+                      <Sparkles className="h-8 w-8 text-primary/40" />
+                    </div>
+                    <p className="text-sm font-medium text-white/20 tracking-[0.2em] uppercase">正在等待任务内容输出...</p>
+                  </div>
+                )}
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center py-20 text-center text-white/20">
-                <Sparkles className="mb-4 h-12 w-12 animate-pulse" />
-                <p className="text-sm tracking-widest">正在等待任务内容输出...</p>
+              <div className="flex flex-col items-center justify-center py-32 text-center text-white/20">
+                <Clock className="mb-4 h-12 w-12 opacity-50" />
+                <p className="text-sm tracking-widest uppercase">暂无活动任务</p>
               </div>
             )}
           </div>
@@ -1361,7 +1449,6 @@ export default function JilingPage() {
       </div>
     </div>
   ) : null;
-
   const mainDisplayContent = useMemo(() => {
     if (isSharing || isVideoOn) {
       return (
@@ -1386,7 +1473,12 @@ export default function JilingPage() {
 
   return (
     <>
-      <main className="relative h-screen w-full overflow-hidden bg-black text-white selection:bg-primary/30">
+      <style dangerouslySetInnerHTML={{ __html: `
+        ::selection {
+          background-color: rgba(59, 130, 246, 0.4) !important;
+        }
+      ` }} />
+      <main className="relative h-screen w-full overflow-hidden bg-black text-white">
       <AnimatePresence>
         {status !== "idle" && (
           <motion.div
