@@ -1322,25 +1322,30 @@ Output format: { "type": "a2ui", "requestId": "unique_id", "payload": { "compone
       const status = action === "approve" ? "approved" :
         action === "reject" ? "rejected" : "dismissed";
 
-      // Robust scanning for JSON blocks
+      const sections = updatedOutput.split('\n\n---\n\n');
+      const lastSectionIdx = sections.length - 1;
+      let targetSection = sections[lastSectionIdx];
+
+      let patched = false;
+      // Robust scanning for JSON blocks in the LAST section only
       let startIndex = 0;
       while (true) {
-        const keywordIndex = updatedOutput.indexOf('"type"', startIndex);
+        const keywordIndex = targetSection.indexOf('"type"', startIndex);
         if (keywordIndex === -1) break;
 
         // Move to next search starting point to avoid infinite loop
         startIndex = keywordIndex + 6;
 
         // Find the start of the object {
-        const objectStart = updatedOutput.lastIndexOf('{', keywordIndex);
+        const objectStart = targetSection.lastIndexOf('{', keywordIndex);
         if (objectStart === -1) continue;
 
         // Find the matching } using bracket balancing
         let braceCount = 0;
         let objectEnd = -1;
-        for (let i = objectStart; i < updatedOutput.length; i++) {
-          if (updatedOutput[i] === '{') braceCount++;
-          else if (updatedOutput[i] === '}') braceCount--;
+        for (let i = objectStart; i < targetSection.length; i++) {
+          if (targetSection[i] === '{') braceCount++;
+          else if (targetSection[i] === '}') braceCount--;
 
           if (braceCount === 0) {
             objectEnd = i + 1;
@@ -1349,7 +1354,7 @@ Output format: { "type": "a2ui", "requestId": "unique_id", "payload": { "compone
         }
 
         if (objectEnd !== -1) {
-          const rawJson = updatedOutput.substring(objectStart, objectEnd);
+          const rawJson = targetSection.substring(objectStart, objectEnd);
           try {
             const payload = JSON.parse(rawJson);
             if (payload.type === "a2ui" && payload.payload) {
@@ -1361,13 +1366,24 @@ Output format: { "type": "a2ui", "requestId": "unique_id", "payload": { "compone
               }
 
               const newJson = JSON.stringify(payload, null, 2);
-              updatedOutput = updatedOutput.substring(0, objectStart) + newJson + updatedOutput.substring(objectEnd);
+              targetSection = targetSection.substring(0, objectStart) + newJson + targetSection.substring(objectEnd);
+              sections[lastSectionIdx] = targetSection;
+              updatedOutput = sections.join('\n\n---\n\n');
+              patched = true;
               break; // Found and patched the block
             }
           } catch (e) {
             // Not a valid JSON block, continue searching
           }
         }
+      }
+
+      if (!patched) {
+        // Fallback for NoteCards or plain text payloads that lack a valid A2UI JSON block.
+        // We append a hidden HTML comment to persist the status, which `activeA2UITask` will detect.
+        targetSection += `\n\n<!-- "status": "${status}" -->`;
+        sections[lastSectionIdx] = targetSection;
+        updatedOutput = sections.join('\n\n---\n\n');
       }
 
       // 2. Update local state
