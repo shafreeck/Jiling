@@ -1,9 +1,15 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { CheckSquare, Square, CheckCircle2, XCircle, Activity, Clock } from "lucide-react";
+import { ListTodo, CheckSquare, Square, CheckCircle2, XCircle, Activity, Clock } from "lucide-react";
 
 const NoteCard = ({ content }: { content: string }) => {
+    const cleanContent = content
+        .replace(/📋\s*/g, '')
+        .replace(/🟢\s*/g, '')
+        .replace(/🟡\s*/g, '')
+        .replace(/⚪\s*/g, '');
+
     return (
         <div className="w-full max-w-none wrap-break-word overflow-x-hidden font-sans p-6 bg-[#19191e]/40 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl">
             <ReactMarkdown
@@ -11,8 +17,37 @@ const NoteCard = ({ content }: { content: string }) => {
                 components={{
                     h1: ({ node, ...props }) => <h1 className="text-xl font-bold text-white mt-6 mb-3 tracking-tight" {...props} />,
                     h2: ({ node, ...props }) => <h2 className="text-lg font-bold text-white mt-5 mb-2.5 tracking-tight" {...props} />,
-                    h3: ({ node, ...props }) => <h3 className="text-base font-bold text-white mt-4 mb-2 tracking-tight" {...props} />,
-                    h4: ({ node, ...props }) => <h4 className="text-sm font-bold text-white mt-3 mb-1.5 tracking-tight" {...props} />,
+                    h3: ({ node, ...props }) => {
+                        const childrenArray = React.Children.toArray(props.children);
+                        const text = childrenArray.map(c => String(c)).join('');
+                        const isTaskList = text.includes('任务清单');
+                        return (
+                            <h3 className="text-base font-bold text-white mt-4 mb-2 tracking-tight flex items-center gap-2">
+                                {isTaskList && <ListTodo className="text-emerald-500" size={18} />}
+                                {props.children}
+                            </h3>
+                        );
+                    },
+                    h4: ({ node, ...props }) => {
+                        const childrenArray = React.Children.toArray(props.children);
+                        const text = childrenArray.map(c => String(c)).join('');
+                        
+                        let icon = null;
+                        if (text.includes('已完成')) {
+                            icon = <CheckCircle2 className="text-emerald-500" size={16} />;
+                        } else if (text.includes('进行中')) {
+                            icon = <Activity className="text-yellow-500" size={16} />;
+                        } else if (text.includes('待办')) {
+                            icon = <Clock className="text-white/50" size={16} />;
+                        }
+                        
+                        return (
+                            <h4 className="text-sm font-bold text-white/90 mt-4 mb-2 tracking-tight flex items-center gap-2">
+                                {icon}
+                                {props.children}
+                            </h4>
+                        );
+                    },
                     p: ({ node, ...props }) => <div className="text-[13px] leading-6 my-3 wrap-break-word" style={{ color: 'rgba(255,255,255,0.9)' }} {...props} />,
                     strong: ({ node, ...props }) => <strong className="font-bold text-white" {...props} />,
                     em: ({ node, ...props }) => <em className="italic text-white/70" {...props} />,
@@ -80,7 +115,7 @@ const NoteCard = ({ content }: { content: string }) => {
                     del: ({node, ...props}) => <del className="line-through text-white/40" {...props} />,
                 }}
             >
-                {content}
+                {cleanContent}
             </ReactMarkdown>
         </div>
     );
