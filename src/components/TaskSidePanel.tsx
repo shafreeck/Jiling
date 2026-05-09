@@ -30,6 +30,7 @@ interface TaskSidePanelProps {
   isPinned: boolean;
   onTogglePin: () => void;
   onAbortTask: (runId: string) => void;
+  onA2UIAction?: (runId: string, action: string, data: any) => void;
 }
 
 export function TaskSidePanel({
@@ -40,7 +41,8 @@ export function TaskSidePanel({
   onSelectTask,
   isPinned,
   onTogglePin,
-  onAbortTask
+  onAbortTask,
+  onA2UIAction
 }: TaskSidePanelProps) {
   const selectedTask = tasks.find(t => t.runId === selectedTaskId);
   
@@ -242,8 +244,9 @@ export function TaskSidePanel({
                         <AuraRenderer 
                           content={selectedTask.output} 
                           onAction={(action, data) => {
-                            console.log(`[A2UI Action] ${action}`, data);
-                            // TODO: Send feedback to Agent
+                            if (onA2UIAction) {
+                              onA2UIAction(selectedTask.runId, action, data);
+                            }
                           }}
                         />
                       ) : (selectedTask.error || selectedTask.phase === "cancelled" || selectedTask.phase === "lost") ? (

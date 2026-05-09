@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ShieldCheck, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface ApprovalCardProps {
     title: string;
@@ -88,8 +90,10 @@ const ApprovalCard = (props: ApprovalCardProps) => {
                 </div>
                 <div style={{ flex: 1 }}>
                     <div style={{ fontSize: '1rem', fontWeight: '700', marginBottom: '4px' }}>{title}</div>
-                    <div style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.9)', lineHeight: '1.5' }}>
-                        {description}
+                    <div className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed prose-strong:text-white prose-code:text-primary-foreground prose-code:bg-primary/20 prose-code:px-1 prose-code:rounded">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {description}
+                        </ReactMarkdown>
                     </div>
                 </div>
             </div>

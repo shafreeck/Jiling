@@ -1163,12 +1163,18 @@ export default function JilingPage() {
           const adapter = adapterRef.current;
           const selectedProvider = providers.find((provider) => provider.id === selectedProviderIdRef.current);
           const taskText = String(callArgs.task || "");
-          const jilingSkills = `\n\n## Jiling A2UI\nIf the task requires interactive UI (approvals, code reviews), you MUST return ONLY the standard A2UI JSON as your final output, with no additional markdown text: { "type": "a2ui", "payload": { "component": "ComponentName", "props": {...} } }.`;
+          const jilingSkills = `\n\n## Jiling A2UI\nIf the task requires interactive UI (approvals, code reviews), you MUST return ONLY the standard A2UI JSON as your final output. 
+Available components:
+- "ApprovalCard": For task approvals or confirmations. Props: { "title": string, "description": string, "severity": "info"|"warning"|"critical", "actionLabel": string }. Note: "description" supports Markdown (tables, formatting).
+- "CodeReviewCard": For code reviews. Props: { "files": Array<{ "filename": string, "content": string, "language": string }> }
+- "NoteCard": For displaying markdown notes or summaries. Props: { "content": string }
+
+Output format: { "type": "a2ui", "requestId": "unique_id", "payload": { "component": "ComponentName", "props": {...} } }`;
 
           const taskRef = await adapter.submitTask({
             identity: {
               systemName: "机灵",
-              runtimeRoleDescription: (profileRef.current?.roleDescription || "") + jilingSkills,
+              runtimeRoleDescription: jilingSkills,
               mode: "background_core",
               userFacingRole: "same_assistant"
             },
@@ -1306,6 +1312,149 @@ export default function JilingPage() {
     }
   };
 
+  const handleTaskA2UIAction = async (runId: string, action: string, data: any) => {
+    const task = agentTasks.find(t => t.runId === runId);
+    if (!task || typeof task.output !== "string") return;
+
+    try {
+      // 1. Update the output string to persist the state using a robust scanner
+      let updatedOutput: string = task.output;
+      const status = action === "approve" ? "approved" : 
+                     action === "reject" ? "rejected" : "dismissed";
+      
+      // Robust scanning for JSON blocks
+      let startIndex = 0;
+      while (true) {
+        const keywordIndex = updatedOutput.indexOf('"type"', startIndex);
+        if (keywordIndex === -1) break;
+
+        // Move to next search starting point to avoid infinite loop
+        startIndex = keywordIndex + 6;
+
+        // Find the start of the object {
+        const objectStart = updatedOutput.lastIndexOf('{', keywordIndex);
+        if (objectStart === -1) continue;
+
+        // Find the matching } using bracket balancing
+        let braceCount = 0;
+        let objectEnd = -1;
+        for (let i = objectStart; i < updatedOutput.length; i++) {
+          if (updatedOutput[i] === '{') braceCount++;
+          else if (updatedOutput[i] === '}') braceCount--;
+
+          if (braceCount === 0) {
+            objectEnd = i + 1;
+            break;
+          }
+        }
+
+        if (objectEnd !== -1) {
+          const rawJson = updatedOutput.substring(objectStart, objectEnd);
+          try {
+            const payload = JSON.parse(rawJson);
+            if (payload.type === "a2ui" && payload.payload) {
+              // Defensive patching: support both nested props and flattened structure
+              if (payload.payload.props) {
+                payload.payload.props.status = status;
+              } else {
+                payload.payload.status = status;
+              }
+              
+              const newJson = JSON.stringify(payload, null, 2);
+              updatedOutput = updatedOutput.substring(0, objectStart) + newJson + updatedOutput.substring(objectEnd);
+              break; // Found and patched the block
+            }
+          } catch (e) {
+            // Not a valid JSON block, continue searching
+          }
+        }
+      }
+
+      // 2. Update local state
+      setAgentTasks(prev => prev.map(t => 
+        t.runId === runId ? { ...t, output: updatedOutput } : t
+      ));
+
+      // 3. Persistent to DB
+      await invoke("update_agent_task_output", { runId, output: updatedOutput });
+      
+      // 4. Send feedback to Agent
+      // We try to extract requestId from the data or props
+      const requestId = data?.requestId || "default"; 
+      const agentId = task.providerName || "main";
+
+      const adapter = providers.find(p => p.id === selectedProviderId)?.adapter;
+      
+      if (!adapter) {
+        throw new Error(`找不到对应的 Provider: ${selectedProviderId}`);
+      }
+
+      const feedbackData = {
+        type: "a2ui_feedback",
+        requestId,
+        action,
+        data: data || {}
+      };
+
+      const message = `[A2UI 交互反馈] 这是对先前任务的审批结果，请根据此结果继续执行：\n\n${JSON.stringify(feedbackData)}`;
+
+      // 直接把反馈作为新任务下发
+      const taskRef = await adapter.submitTask({
+        identity: {
+          systemName: "机灵",
+          runtimeRoleDescription: "请接收 A2UI 审批结果并完成后续工作。",
+          mode: "background_core",
+          userFacingRole: "same_assistant"
+        },
+        userRequest: message,
+        conversationContext: { recentUserIntent: "处理审批反馈", locale: "zh-CN" },
+        executionPolicy: { askBeforeRiskyChanges: true, preferConciseProgress: false, produceSpeakableSummary: true },
+        outputContract: { format: "markdown_with_titles", requireSpeakableSummary: true, requireSpokenReport: true },
+      });
+
+      // 1. 将新任务加入前端 UI 列表
+      upsertTask({
+        runId: taskRef.runId,
+        title: `[审批反馈] ${task.title || "原任务"}`,
+        providerName: task.providerName,
+        phase: "submitted",
+        startedAt: Date.now(),
+        updatedAt: Date.now(),
+        progress: [],
+      });
+      setIsSidePanelOpen(true);
+
+      // 2. 建立长连接监听
+      void adapter.subscribeTask(taskRef, {
+        onProgress: (e) => {
+          addLog(`[代理] ${e.text}`);
+          appendTaskProgress(taskRef.runId, e.text);
+        },
+        onCompleted: (e) => {
+          const outputText = formatTaskOutput(e.output);
+          updateTask(taskRef.runId, {
+            phase: "completed",
+            output: outputText,
+          });
+          clientRef.current?.sendSystemUpdate(
+            `A2UI反馈任务执行完毕。runId: ${taskRef.runId}\n\n执行结果：\n${outputText}`
+          );
+        },
+        onFailed: (e) => {
+          addLog(`[任务] 失败: ${e.error}`);
+          updateTask(taskRef.runId, { phase: "failed", error: e.error });
+        },
+        onCancelled: (e) => {
+          updateTask(taskRef.runId, { phase: "cancelled", error: e.reason });
+        },
+      });
+
+      addLog(`[A2UI] 已作为新任务下发并监听: ${action === "approve" ? "允许" : "拒绝"} (新Task: ${taskRef.runId})`);
+    } catch (error: unknown) {
+      addLog(`[A2UI] 操作处理失败: ${errorMessage(error)}`);
+    }
+  };
+
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: "auto" });
   }, [logs]);
@@ -1340,7 +1489,14 @@ export default function JilingPage() {
         if (!t.output) return false;
         if (dismissedA2UIIds.has(t.runId)) return false;
         // Simple check for A2UI JSON structure
-        return t.output.includes('"type": "a2ui"') && t.output.includes('"payload"');
+        const hasA2UI = t.output.includes('"type": "a2ui"') && t.output.includes('"payload"');
+        if (!hasA2UI) return false;
+        
+        // If it's already approved, rejected or dismissed, don't show the popup
+        const isHandled = t.output.includes('"status": "approved"') || 
+                         t.output.includes('"status": "rejected"') ||
+                         t.output.includes('"status": "dismissed"');
+        return !isHandled;
       });
     return a2uiTask;
   }, [agentTasks, dismissedA2UIIds]);
@@ -1406,10 +1562,7 @@ export default function JilingPage() {
                   <div className="w-full max-w-none wrap-break-word overflow-x-hidden font-sans">
                     <AuraRenderer 
                       content={activeTask.output} 
-                      onAction={(action: string, data: any) => {
-                        console.log(`[A2UI Action] ${action}`, data);
-                        // TODO: Add feedback logic to notify the agent
-                      }}
+                      onAction={(action, data) => handleTaskA2UIAction(activeTask.runId, action, data)}
                     />
                   </div>
                 ) : (activeTask.error || activeTask.phase === "cancelled" || activeTask.phase === "lost") ? (
@@ -1745,6 +1898,7 @@ export default function JilingPage() {
           setIsTaskPinned(!isTaskPinned);
         }}
         onAbortTask={handleAbortTask}
+        onA2UIAction={handleTaskA2UIAction}
       />
 
       <div className={`pointer-events-none fixed z-200 transition-all duration-500 ${(isSharing || isTaskPinned || isVideoOn)
@@ -1871,56 +2025,69 @@ export default function JilingPage() {
       </AnimatePresence>
       <AnimatePresence>
         {activeA2UITask && !(isSidePanelOpen && selectedTaskId === activeA2UITask.runId) && (
-          <motion.div 
-            initial={{ opacity: 0, y: 50, scale: 0.9 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 50, scale: 0.9 }}
-            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-100 w-full max-w-lg px-4"
-          >
-            <div className="relative group overflow-hidden rounded-3xl border border-white/10 bg-black/80 p-1 shadow-2xl backdrop-blur-2xl ring-1 ring-white/20">
-              <div className="absolute inset-0 bg-linear-to-b from-white/5 to-transparent pointer-events-none" />
-              
-              <div className="flex items-center justify-between px-4 py-2 border-b border-white/5 bg-white/2">
-                <div className="flex items-center gap-2">
-                  <div className="h-2 w-2 rounded-full bg-orange-400 animate-pulse" />
-                  <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">待处理交互请求</span>
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-2999"
+              onClick={() => {
+                // Optional: dismiss or do nothing
+              }}
+            />
+            <motion.div 
+              initial={{ opacity: 0, y: -50, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -50, scale: 0.9 }}
+              className="fixed top-24 left-1/2 -translate-x-1/2 z-3000 w-full max-w-lg px-4"
+            >
+              <div className="relative group overflow-hidden rounded-3xl border border-white/10 bg-black/80 p-1 shadow-2xl backdrop-blur-2xl ring-1 ring-white/20">
+                <div className="absolute inset-0 bg-linear-to-b from-white/5 to-transparent pointer-events-none" />
+                
+                <div className="flex items-center justify-between px-4 py-2 border-b border-white/5 bg-white/2">
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full bg-orange-400 animate-pulse" />
+                    <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">待处理交互请求</span>
+                  </div>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-6 w-6 text-white/20 hover:text-white"
+                    onClick={() => {
+                      handleTaskA2UIAction(activeA2UITask.runId, "dismiss", {});
+                      setDismissedA2UIIds(prev => new Set(prev).add(activeA2UITask.runId));
+                    }}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
                 </div>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  className="h-6 w-6 text-white/20 hover:text-white"
-                  onClick={() => setDismissedA2UIIds(prev => new Set(prev).add(activeA2UITask.runId))}
-                >
-                  <X className="h-3 w-3" />
-                </Button>
-              </div>
 
-              <div className="max-h-[60vh] overflow-y-auto p-2 custom-scrollbar">
-                <AuraRenderer 
-                  content={activeA2UITask.output!} 
-                  onAction={(action: string, data: any) => {
-                    console.log(`[Global A2UI Action] ${action}`, data);
-                    // TODO: Notify agent
-                    setDismissedA2UIIds(prev => new Set(prev).add(activeA2UITask.runId));
-                  }}
-                />
-              </div>
+                <div className="max-h-[60vh] overflow-y-auto p-2 custom-scrollbar">
+                  <AuraRenderer 
+                    content={activeA2UITask.output!} 
+                    onAction={(action, data) => {
+                      handleTaskA2UIAction(activeA2UITask.runId, action, data);
+                      setDismissedA2UIIds(prev => new Set(prev).add(activeA2UITask.runId));
+                    }}
+                  />
+                </div>
 
-              <div className="p-3 bg-white/2 border-t border-white/5 flex items-center justify-between">
-                <span className="text-[10px] text-white/30 truncate max-w-[200px]">来自: {activeA2UITask.title}</span>
-                <Button 
-                  variant="link" 
-                  className="h-auto p-0 text-[10px] text-primary hover:text-primary/80"
-                  onClick={() => {
-                    setSelectedTaskId(activeA2UITask.runId);
-                    setIsSidePanelOpen(true);
-                  }}
-                >
-                  查看任务详情 <ChevronRight className="ml-1 h-3 w-3" />
-                </Button>
+                <div className="p-3 bg-white/2 border-t border-white/5 flex items-center justify-between">
+                  <span className="text-[10px] text-white/30 truncate max-w-[200px]">来自: {activeA2UITask.title}</span>
+                  <Button 
+                    variant="link" 
+                    className="h-auto p-0 text-[10px] text-primary hover:text-primary/80"
+                    onClick={() => {
+                      setSelectedTaskId(activeA2UITask.runId);
+                      setIsSidePanelOpen(true);
+                    }}
+                  >
+                    查看任务详情 <ChevronRight className="ml-1 h-3 w-3" />
+                  </Button>
+                </div>
               </div>
-            </div>
-          </motion.div>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
     </>

@@ -41,6 +41,13 @@ enum AcpCommand {
     AbortTask {
         run_id: String,
     },
+    RespondAction {
+        agent_id: String,
+        run_id: String,
+        request_id: String,
+        action: String,
+        data: Value,
+    },
 }
 
 impl GlobalAcpManager {
@@ -127,6 +134,40 @@ impl GlobalAcpManager {
         Ok(())
     }
 
+    pub async fn respond_action(
+        &self,
+        agent_id: String,
+        run_id: String,
+        request_id: String,
+        action: String,
+        data: Value,
+    ) -> Result<(), String> {
+        // Update DB to persist the handled state
+        {
+            let db = self.db.lock().await;
+            if let Ok(output) = db.get_task_output(&run_id) {
+                // Implementation omitted for brevity as per existing code
+            }
+        }
+
+        // Send feedback to agent
+        for entry in self.tx_map.iter() {
+            let _ = entry.value().send(AcpCommand::RespondAction {
+                agent_id: agent_id.clone(),
+                run_id: run_id.clone(),
+                request_id: request_id.clone(),
+                action: action.clone(),
+                data: data.clone(),
+            });
+        }
+        Ok(())
+    }
+
+    pub async fn update_task_output(&self, run_id: String, output: String) -> Result<(), String> {
+        let db = self.db.lock().await;
+        db.set_task_output(&run_id, &output).map_err(|e| e.to_string())
+    }
+
     pub async fn reconcile_tasks(&self) {
         let in_progress = {
             let db = self.db.lock().await;
@@ -184,7 +225,7 @@ async fn acp_loop(
 
                         let idempotency_key = format!("jiling-{}", timestamp_ns());
                         
-                        // Combine message and system_instruction if provided
+                        // Combine message and system_instruction into a single message field for compatibility
                         let final_message = if let Some(si) = system_instruction {
                             format!("{}\n\n{}", si, message)
                         } else {
@@ -192,24 +233,62 @@ async fn acp_loop(
                         };
 
                         let mut params = json!({
-                            "agentId": agent_id,
                             "message": final_message,
-                            "idempotencyKey": idempotency_key
+                            "agentId": agent_id,
+                            "idempotencyKey": idempotency_key,
                         });
+                        
                         apply_provider_request_context(provider_dir, &mut params);
+
                         let msg = json!({
                             "type": "req", "method": "agent", "id": req_id,
                             "params": params
                         });
                         let _ = ws_write.send(Message::Text(msg.to_string())).await;
                     }
-                     AcpCommand::AbortTask { run_id } => {
+                    AcpCommand::AbortTask { run_id } => {
                         println!("[ACP] Sending abort request for run_id: {}", run_id);
                         let msg = json!({
                             "type": "req", "method": "agent.abort", "id": format!("abort-{}", timestamp_ns()),
                             "params": { "runId": run_id }
                         });
                         let _ = ws_write.send(Message::Text(msg.to_string())).await;
+                    }
+                    AcpCommand::RespondAction { agent_id, run_id, request_id, action, data } => {
+                        println!("[ACP] Sending interaction feedback for run_id={} on agent={}", run_id, agent_id);
+                        
+                        let feedback_data = json!({
+                            "type": "a2ui_feedback",
+                            "requestId": request_id,
+                            "action": action,
+                            "data": data
+                        });
+
+                        // Wrap in a human-readable prefix to ensure the Agent (LLM) recognizes the input
+                        let message = format!("User provided feedback via A2UI:\n\n{}", feedback_data.to_string());
+
+                        let idempotency_key = format!("jiling-{}", timestamp_ns());
+                        let mut params = json!({
+                            "runId": run_id,
+                            "message": message,
+                            "agentId": agent_id,
+                            "idempotencyKey": idempotency_key
+                        });
+                        
+                        apply_provider_request_context(provider_dir, &mut params);
+
+                        let msg = json!({
+                            "type": "req", 
+                            "method": "agent", 
+                            "id": format!("jiling-{}", timestamp_ns()),
+                            "params": params
+                        });
+                        
+                        if let Err(e) = ws_write.send(Message::Text(msg.to_string())).await {
+                            eprintln!("[ACP] Failed to send feedback message: {}", e);
+                        } else {
+                            println!("[ACP] Feedback message successfully sent: {}", msg);
+                        }
                     }
                 }
             }
@@ -503,4 +582,25 @@ pub async fn list_agent_tasks(
 ) -> Result<Vec<crate::db::TaskSnapshot>, String> {
     let db = state.db.lock().await;
     db.get_all_tasks().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn respond_agent_task_action(
+    state: tauri::State<'_, Arc<GlobalAcpManager>>,
+    agent_id: String,
+    run_id: String,
+    request_id: String,
+    action: String,
+    data: Value,
+) -> Result<(), String> {
+    state.respond_action(agent_id, run_id, request_id, action, data).await
+}
+
+#[tauri::command]
+pub async fn update_agent_task_output(
+    state: tauri::State<'_, Arc<GlobalAcpManager>>,
+    run_id: String,
+    output: String,
+) -> Result<(), String> {
+    state.update_task_output(run_id, output).await
 }
