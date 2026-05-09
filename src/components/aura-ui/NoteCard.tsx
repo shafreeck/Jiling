@@ -5,7 +5,7 @@ import { CheckSquare, Square, CheckCircle2, XCircle, Activity, Clock } from "luc
 
 const NoteCard = ({ content }: { content: string }) => {
     return (
-        <div className="w-full max-w-none wrap-break-word overflow-x-hidden font-sans">
+        <div className="w-full max-w-none wrap-break-word overflow-x-hidden font-sans p-6 bg-[#19191e]/40 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl">
             <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
