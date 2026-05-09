@@ -338,7 +338,18 @@ const CodeReviewCard = (props: CodeReviewProps) => {
                             </div>
                             <button
                                 onClick={() => setIsExpanded(false)}
-                                style={{ background: 'rgba(255,255,255,0.05)', border: 'none', borderRadius: '50%', width: '40px', height: '40px', color: '#fff', cursor: 'pointer' }}
+                                style={{ 
+                                    background: 'rgba(255,255,255,0.05)', 
+                                    border: 'none', 
+                                    borderRadius: '50%', 
+                                    width: '40px', 
+                                    height: '40px', 
+                                    color: '#fff', 
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}
                             >
                                 <X size={20} />
                             </button>
