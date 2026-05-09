@@ -103,9 +103,10 @@ impl Db {
             "SELECT run_id, provider_id, agent_id, status, message, output, created_at, updated_at FROM tasks WHERE run_id = ?",
             params![run_id],
             |row| {
+                let provider_id: Option<String> = row.get(1)?;
                 Ok(TaskSnapshot {
                     run_id: row.get(0)?,
-                    provider_id: row.get(1)?,
+                    provider_id: provider_id.unwrap_or_else(|| "unknown".to_string()),
                     agent_id: row.get(2)?,
                     status: row.get(3)?,
                     message: row.get(4)?,
@@ -122,9 +123,10 @@ impl Db {
             "SELECT run_id, provider_id, agent_id, status, message, output, created_at, updated_at FROM tasks ORDER BY created_at DESC"
         )?;
         let task_iter = stmt.query_map([], |row| {
+            let provider_id: Option<String> = row.get(1)?;
             Ok(TaskSnapshot {
                 run_id: row.get(0)?,
-                provider_id: row.get(1)?,
+                provider_id: provider_id.unwrap_or_else(|| "unknown".to_string()),
                 agent_id: row.get(2)?,
                 status: row.get(3)?,
                 message: row.get(4)?,
