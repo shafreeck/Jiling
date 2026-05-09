@@ -1318,34 +1318,15 @@ export default function JilingPage() {
         }
       ` }} />
       
-      <div className="flex items-center justify-between border-b border-white/5 bg-white/2 px-6 py-3 backdrop-blur-md">
-        <div className="flex items-center gap-3 overflow-hidden">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10">
-            <ListChecks className="h-4 w-4 text-primary" />
-          </div>
-          <div className="flex flex-col min-w-0">
-            <h3 className="text-sm font-bold text-white line-clamp-2 leading-tight">
-              {activeTask?.title || "等待任务中..."}
-            </h3>
-            <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-[10px] text-white/40 font-mono uppercase tracking-wider">{activeTask?.providerName || "system"}</span>
-              {activeTask?.phase === "running" && (
-                <span className="flex items-center gap-1 text-[10px] text-primary/80">
-                  <Activity className="h-2.5 w-2.5 animate-pulse" />
-                  Running
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
+      {/* Floating Close Button */}
+      <div className="absolute right-6 top-6 z-50">
         <Button 
           variant="ghost" 
-          size="sm" 
+          size="icon" 
           onClick={() => setIsTaskPinned(false)}
-          className="h-8 shrink-0 rounded-full bg-white/5 px-4 text-xs text-white/60 hover:bg-white/10 hover:text-white transition-all ml-4"
+          className="h-10 w-10 rounded-full bg-white/5 text-white/40 hover:bg-white/10 hover:text-white transition-all backdrop-blur-md border border-white/5 shadow-2xl"
         >
-          <AppWindow className="mr-2 h-3.5 w-3.5" />
-          退出阅读模式
+          <X className="h-5 w-5" />
         </Button>
       </div>
 
@@ -1353,25 +1334,31 @@ export default function JilingPage() {
         <ScrollArea className="h-full w-full">
           <div className="p-10 pb-40 max-w-4xl mx-auto">
             {activeTask ? (
-              <div className="space-y-8">
-                {/* Request Header with Collapse */}
-                <div className="bg-white/5 rounded-2xl border border-white/10 overflow-hidden shadow-2xl">
-                  <details className="group">
-                    <summary className="flex items-center justify-between p-5 cursor-pointer hover:bg-white/5 transition-colors list-none">
-                      <div className="flex items-center gap-3">
-                        <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center">
-                          <Terminal className="h-4 w-4 text-primary" />
-                        </div>
-                        <span className="text-sm font-bold text-white tracking-tight">原始请求内容</span>
-                      </div>
-                      <ChevronRight className="h-4 w-4 text-white/30 group-open:rotate-90 transition-transform" />
+              <div className="space-y-10">
+                {/* Unified Header Block */}
+                <div>
+                  <h3 className="text-sm font-bold text-white leading-tight line-clamp-2">{activeTask.title}</h3>
+                  
+                  <details className="mt-3 group">
+                    <summary className="flex items-center cursor-pointer text-[10px] text-white/30 hover:text-white/50 transition-colors list-none">
+                      <ChevronDown className="h-3 w-3 mr-1 transition-transform group-open:rotate-180" />
+                      <span>查看原始请求内容</span>
                     </summary>
-                    <div className="px-5 pb-5 pt-2 border-t border-white/5 bg-black/40">
-                      <p className="text-[13px] leading-relaxed text-white/70 font-medium tracking-tight">
-                        {activeTask.title}
-                      </p>
+                    <div className="mt-2 p-4 rounded-xl bg-white/3 border border-white/5 text-[11px] text-white/50 leading-relaxed italic whitespace-pre-wrap wrap-break-word overflow-hidden">
+                      {activeTask.title}
                     </div>
                   </details>
+                  
+                  <div className="mt-4 flex items-center gap-3">
+                    <div className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+                      activeTask.phase === "completed" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" :
+                      activeTask.phase === "running" ? "bg-primary/10 text-primary border border-primary/20 animate-pulse" :
+                      "bg-white/5 text-white/40 border border-white/10"
+                    }`}>
+                      {activeTask.phase === "completed" ? "已完成" : activeTask.phase === "running" ? "正在执行" : "等待中"}
+                    </div>
+                    <span className="text-[10px] text-white/30 font-mono uppercase tracking-widest">{activeTask.providerName}</span>
+                  </div>
                 </div>
 
                 <div className="h-px w-full bg-linear-to-r from-transparent via-white/10 to-transparent" />
