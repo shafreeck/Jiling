@@ -379,7 +379,7 @@ async fn acp_loop(
                                         let _ = pending.tx.send(Err("Agent response missing runId".to_string())).await;
                                     } else {
                                         let db_lock = db.lock().await;
-                                        let _ = db_lock.insert_task(&run_id, &pending.agent_id, &pending.message);
+                                        let _ = db_lock.insert_task(&run_id, provider_dir, &pending.message);
                                         let _ = pending.tx.send(Ok(run_id)).await;
                                     }
                                 } else {
