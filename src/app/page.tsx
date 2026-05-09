@@ -1453,14 +1453,17 @@ Output format: { "type": "a2ui", "requestId": "unique_id", "payload": { "compone
         if (t.phase !== "running" && t.phase !== "submitted" && t.phase !== "completed") return false;
         if (!t.output) return false;
         if (dismissedA2UIs.get(t.runId) === t.output) return false;
-        // Simple check for A2UI JSON structure
-        const hasA2UI = t.output.includes('"type": "a2ui"') && t.output.includes('"payload"');
+        const sections = t.output.split('\n\n---\n\n');
+        const lastSection = sections[sections.length - 1].trim();
+        
+        // Simple check for A2UI JSON structure in the LAST section only
+        const hasA2UI = lastSection.includes('"type": "a2ui"') && lastSection.includes('"payload"');
         if (!hasA2UI) return false;
 
         // If it's already approved, rejected or dismissed, don't show the popup
-        const isHandled = t.output.includes('"status": "approved"') ||
-          t.output.includes('"status": "rejected"') ||
-          t.output.includes('"status": "dismissed"');
+        const isHandled = lastSection.includes('"status": "approved"') ||
+          lastSection.includes('"status": "rejected"') ||
+          lastSection.includes('"status": "dismissed"');
         return !isHandled;
       });
     return a2uiTask;

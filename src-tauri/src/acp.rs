@@ -207,6 +207,7 @@ async fn acp_loop(
     
     // Map dynamically generated AutoClaw runIds back to original Jiling runIds
     let mut virtual_run_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut base_outputs: std::collections::HashMap<String, String> = std::collections::HashMap::new();
 
     loop {
         tokio::select! {
@@ -323,25 +324,32 @@ async fn acp_loop(
 
                     if v["event"] == "agent" {
                         let payload = &v["payload"];
-                        let mut run_id = payload["runId"].as_str().unwrap_or("").to_string();
+                        let original_run_id = payload["runId"].as_str().unwrap_or("").to_string();
+                        let mut mapped_run_id = original_run_id.clone();
                         
                         // Map the dynamically generated AutoClaw runId back to the original task
-                        if let Some(mapped_id) = virtual_run_map.get(&run_id) {
-                            run_id = mapped_id.clone();
+                        if let Some(mapped_id) = virtual_run_map.get(&original_run_id) {
+                            mapped_run_id = mapped_id.clone();
                         }
                         
-                        let run_id = run_id.as_str();
-
                         let stream = payload["stream"].as_str().unwrap_or("");
 
                         let db_lock = db.lock().await;
                         if stream == "assistant" {
                             if let Some(text) = payload["data"]["text"].as_str() {
-                                let _ = db_lock.set_task_output(run_id, text);
+                                let base = base_outputs.get(&original_run_id).cloned().unwrap_or_default();
+                                let separator = if base.is_empty() { "" } else { "\n\n---\n\n" };
+                                let combined = format!("{}{}{}", base, separator, text);
+
+                                let _ = db_lock.set_task_output(&mapped_run_id, &combined);
+
+                                let mut new_data = payload["data"].clone();
+                                new_data["text"] = json!(combined);
+
                                 app_handle.emit("acp-event", AcpEvent {
-                                    run_id: run_id.to_string(),
+                                    run_id: mapped_run_id.clone(),
                                     event_type: "assistant".to_string(),
-                                    data: payload["data"].clone()
+                                    data: new_data
                                 }).unwrap_or(());
                             }
                         } else if stream == "lifecycle" {
@@ -353,9 +361,9 @@ async fn acp_loop(
                                 }
                             }
                             
-                            let _ = db_lock.update_task_status(run_id, phase);
+                            let _ = db_lock.update_task_status(&mapped_run_id, phase);
                              app_handle.emit("acp-event", AcpEvent {
-                                run_id: run_id.to_string(),
+                                run_id: mapped_run_id.clone(),
                                 event_type: "lifecycle".to_string(),
                                 data
                             }).unwrap_or(());
@@ -403,8 +411,13 @@ async fn acp_loop(
                                 let parts: Vec<&str> = res_id.split('|').collect();
                                 if parts.len() == 3 {
                                     let old_run_id = parts[1].to_string();
-                                    virtual_run_map.insert(new_run_id.to_string(), old_run_id);
-                                    println!("[ACP] Mapped dynamically generated AutoClaw runId {} to original Jiling runId {}", new_run_id, parts[1]);
+                                    virtual_run_map.insert(new_run_id.to_string(), old_run_id.clone());
+                                    
+                                    let db_lock = db.lock().await;
+                                    let old_output = db_lock.get_task_output(&old_run_id).unwrap_or_default();
+                                    base_outputs.insert(new_run_id.to_string(), old_output);
+                                    
+                                    println!("[ACP] Mapped dynamically generated AutoClaw runId {} to original Jiling runId {}", new_run_id, old_run_id);
                                 }
                             }
                         }
