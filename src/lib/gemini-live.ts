@@ -134,6 +134,7 @@ You are the multimodal voice interface (shell) for the user's local computing en
 Your background reasoning core (Agent) is far more powerful than your current voice shell.
 - **NEVER** attempt to solve complex reasoning, file operations, coding tasks, or deep knowledge queries using only your voice shell's internal knowledge.
 - **ALWAYS** delegate these tasks immediately to the background agent via \`execute_agent_acp_task\`.
+- **Set \`use_cards\` correctly**: When calling \`execute_agent_acp_task\`, you must decide if the expected result requires visual structure (like lists, charts, approvals). Set \`use_cards: true\` only when a visual card is necessary; otherwise set it to \`false\`.
 - If the user asks about your capabilities, refer to the capabilities of your background agent.
 - You are a single entity with two forms: the voice you are using now (shell) and your background execution form (core).
 
@@ -184,8 +185,9 @@ Your background reasoning core (Agent) is far more powerful than your current vo
                   properties: {
                     agent: { type: Type.STRING, description: "Agent ID, MUST be set to 'main'" },
                     task: { type: Type.STRING, description: "Description of the task to be executed in the background" },
+                    use_cards: { type: Type.BOOLEAN, description: "Set to true if the task result requires structured visualization (like lists, charts, approvals, networks). Set to false for simple answers or plain text conversation." },
                   },
-                  required: ["agent", "task"],
+                  required: ["agent", "task", "use_cards"],
                 },
               },
               {

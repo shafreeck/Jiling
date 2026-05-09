@@ -1177,10 +1177,11 @@ Available components:
 Output format: { "type": "a2ui", "requestId": "unique_id", "summary": "A human-readable summary of the card (for logs and voice fallback)", "payload": { "component": "ComponentName", "props": {...} } }
 Note: If you output A2UI, return ONLY the JSON without any other text.`;
 
+          const useCards = Boolean(callArgs.use_cards);
           const taskRef = await adapter.submitTask({
             identity: {
               systemName: "机灵",
-              runtimeRoleDescription: jilingSkills,
+              runtimeRoleDescription: useCards ? jilingSkills : "For normal conversation or simple answers, use standard Markdown.",
               mode: "background_core",
               userFacingRole: "same_assistant"
             },
