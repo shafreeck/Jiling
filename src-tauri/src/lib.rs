@@ -4,6 +4,7 @@ use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
 pub mod acp;
 mod commands;
 pub mod db;
+pub mod wechat;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -31,6 +32,7 @@ pub fn run() {
         )
         .setup(|app| {
             let manager = std::sync::Arc::new(acp::GlobalAcpManager::new(app.handle().clone()));
+            let wechat_manager = std::sync::Arc::new(wechat::WechatManager::new(app.handle().clone()));
             
             // Reconcile tasks on startup to clear zombie entries
             let manager_clone = manager.clone();
@@ -39,6 +41,7 @@ pub fn run() {
             });
 
             app.manage(manager);
+            app.manage(wechat_manager);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -49,6 +52,9 @@ pub fn run() {
             acp::list_agent_tasks,
             acp::respond_agent_task_action,
             acp::update_agent_task_output,
+            wechat::wechat_login,
+            wechat::wechat_logout,
+            wechat::wechat_respond,
             commands::get_api_key,
             commands::get_api_key_status,
             commands::set_api_key,

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import type { FunctionResponse } from "@google/genai";
 import {
   Activity,
@@ -54,6 +55,7 @@ import { TranscriptOverlay, type TranscriptMessage } from "@/components/Transcri
 import { ControlBar } from "@/components/ControlBar";
 import { TaskSidePanel } from "@/components/TaskSidePanel";
 import { TaskOutputOverlay } from "@/components/TaskOutputOverlay";
+import { WechatLoginModal } from "@/components/WechatLoginModal";
 
 type VoiceStatus = "idle" | "listening" | "thinking" | "speaking";
 type ToolCall = NonNullable<LiveMessage["toolCall"]>;
@@ -410,6 +412,11 @@ export default function JilingPage() {
   const [isTextInputPinned, setIsTextInputPinned] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
   const [isOnline, setIsOnline] = useState(false);
+  const [isWechatConnected, setIsWechatConnected] = useState(false);
+  const [wechatQrCodeUrl, setWechatQrCodeUrl] = useState<string | null>(null);
+  const [isWechatModalOpen, setIsWechatModalOpen] = useState(false);
+  const [wechatLoginStatus, setWechatLoginStatus] = useState<"idle" | "logging_in" | "success" | "error">("idle");
+  const [wechatError, setWechatError] = useState<string | undefined>(undefined);
   const tickTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -433,6 +440,34 @@ export default function JilingPage() {
       if (unlistenFn) unlistenFn();
       if (tickTimeoutRef.current) clearTimeout(tickTimeoutRef.current);
     };
+  }, []);
+
+  useEffect(() => {
+    let unlistenFn: (() => void) | null = null;
+    const setup = async () => {
+      const { listen } = await import("@tauri-apps/api/event");
+      const unlisten = await listen("wechat-event", (event: any) => {
+        const payload = event.payload as any;
+        if (payload.method === "qr_code_url") {
+          setWechatQrCodeUrl(payload.params.url);
+          setWechatLoginStatus("logging_in");
+        } else if (payload.method === "status") {
+          if (payload.params.state === "ready") {
+            setIsWechatConnected(true);
+            setWechatLoginStatus("success");
+            setTimeout(() => setIsWechatModalOpen(false), 2000);
+          } else if (payload.params.state === "error") {
+            setWechatError(payload.params.error);
+            setWechatLoginStatus("error");
+          }
+        } else if (payload.method === "message_received") {
+          handleWechatMessage(payload.params);
+        }
+      });
+      unlistenFn = unlisten;
+    };
+    setup();
+    return () => { if (unlistenFn) unlistenFn(); };
   }, []);
 
   useEffect(() => {
@@ -669,6 +704,76 @@ export default function JilingPage() {
       if (timer) clearInterval(timer);
     };
   }, [isConnected, isVideoOn, isSharing]);
+
+  const handleWechatMessage = async (params: any) => {
+    const { text, requestId } = params;
+    const adapter = adapterRef.current;
+    if (!adapter) return;
+
+    try {
+      const taskRef = await adapter.submitTask({
+        identity: {
+          systemName: "机灵",
+          runtimeRoleDescription: "你正在通过微信与用户交流，请保持回复简洁且适合移动端阅读。",
+          mode: "background_core",
+          userFacingRole: "same_assistant"
+        },
+        userRequest: text,
+        conversationContext: { recentUserIntent: text, locale: selectedLanguage },
+        executionPolicy: { askBeforeRiskyChanges: true, preferConciseProgress: true, produceSpeakableSummary: true },
+        outputContract: { format: "markdown_with_titles", requireSpeakableSummary: true, requireSpokenReport: false },
+      });
+
+      upsertTask({
+        runId: taskRef.runId,
+        title: `[微信] ${taskTitleFromRequest(text)}`,
+        providerName: selectedProviderId || taskRef.providerId,
+        phase: "submitted",
+        startedAt: Date.now(),
+        updatedAt: Date.now(),
+        progress: [],
+      });
+
+      void adapter.subscribeTask(taskRef, {
+        onProgress: (e) => {
+          appendTaskProgress(taskRef.runId, e.text);
+        },
+        onCompleted: (e) => {
+          let outputText = formatTaskOutput(e.output);
+          
+          // Strip A2UI JSON blocks for Wechat
+          outputText = outputText.replace(/```json\s*\{[\s\S]*?"type":\s*"a2ui"[\s\S]*?\}\s*```/g, '').trim();
+          
+          if (!outputText && typeof e.output !== "string") {
+            outputText = e.output.speakableSummary || e.output.title;
+          }
+
+          updateTask(taskRef.runId, { phase: "completed", output: outputText });
+          
+          // Reply back to Wechat
+          invoke("wechat_respond", { 
+            requestId, 
+            payload: { text: outputText } 
+          });
+
+          if (clientRef.current) {
+            clientRef.current.sendSystemUpdate(
+              `Wechat task completed. Result has been sent back to the user.\nResult: ${outputText}`
+            );
+          }
+        },
+        onFailed: (e) => {
+          updateTask(taskRef.runId, { phase: "failed", error: e.error });
+          invoke("wechat_respond", { 
+            requestId, 
+            payload: { text: `抱歉，执行失败：${e.error}` } 
+          });
+        }
+      });
+    } catch (error) {
+      console.error("Failed to handle wechat message:", error);
+    }
+  };
 
   const handleTextInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // 如果正在使用输入法组词，不触发发送
@@ -2067,6 +2172,25 @@ Note: If you output A2UI, return ONLY the JSON without any other text.`;
               setIsTaskPinned(true);
             }
           }}
+          isWechatConnected={isWechatConnected}
+          onWechatConnect={() => {
+            setIsWechatModalOpen(true);
+            setWechatLoginStatus("idle");
+            setWechatQrCodeUrl(null);
+            invoke("wechat_login");
+          }}
+          onWechatDisconnect={() => {
+            invoke("wechat_logout");
+            setIsWechatConnected(false);
+          }}
+        />
+
+        <WechatLoginModal
+          isOpen={isWechatModalOpen}
+          onClose={() => setIsWechatModalOpen(false)}
+          qrCodeUrl={wechatQrCodeUrl}
+          status={wechatLoginStatus}
+          error={wechatError}
         />
 
 
