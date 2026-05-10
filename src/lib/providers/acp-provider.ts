@@ -121,7 +121,8 @@ export class AcpProviderAdapter implements AgentProviderAdapter {
     // Currently, our ACP backend expects `agent` and `task`
     // We pass `main` as the default agent for now, or read from config
 
-    const systemInstruction = `${task.identity.runtimeRoleDescription || ""}`;
+    const systemInstruction = task.identity.runtimeRoleDescription || "";
+    const attachments = task.attachments?.map(a => a.filePath).filter(Boolean) as string[];
 
     const runId = await invoke<string>("execute_agent_acp_task", {
       providerId: this.id,
@@ -129,6 +130,7 @@ export class AcpProviderAdapter implements AgentProviderAdapter {
       agent: "main",
       task: task.userRequest,
       systemInstruction: systemInstruction,
+      attachments: attachments.length > 0 ? attachments : null,
     });
 
     return { runId, providerId: this.id };

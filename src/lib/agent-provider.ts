@@ -52,6 +52,12 @@ export type JilingTaskEnvelope = {
     preferredRuntime?: "codex" | "gemini" | "claude-code" | "auto";
   };
   userRequest: string;
+  attachments?: {
+    type: "image" | "audio" | "video" | "file";
+    filePath: string;
+    mimeType: string;
+    fileName?: string;
+  }[];
   conversationContext: {
     recentUserIntent: string;
     relevantVoiceContext?: string;

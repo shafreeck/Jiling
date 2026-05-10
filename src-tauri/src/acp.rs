@@ -34,7 +34,8 @@ enum AcpCommand {
     RunTask {
         agent_id: String,
         message: String,
-        system_instruction: Option<String>,
+        system_instruction: String,
+        attachments: Option<Vec<String>>,
         run_id_tx: mpsc::Sender<Result<String, String>>,
     },
     AbortTask {
@@ -63,13 +64,14 @@ impl GlobalAcpManager {
         }
     }
 
-    pub async fn run_task(
+    pub async fn execute_task(
         &self,
         provider_id: String,
         provider_dir: String,
         agent_id: String,
         message: String,
-        system_instruction: Option<String>,
+        system_instruction: String,
+        attachments: Option<Vec<String>>,
     ) -> Result<String, String> {
         let tx = {
             if !self.tx_map.contains_key(&provider_id) {
@@ -113,6 +115,7 @@ impl GlobalAcpManager {
             agent_id,
             message,
             system_instruction,
+            attachments,
             run_id_tx,
         })
         .map_err(|e| e.to_string())?;
@@ -218,7 +221,7 @@ async fn acp_loop(
         tokio::select! {
             Some(cmd) = rx.recv(), if authenticated => {
                 match cmd {
-                    AcpCommand::RunTask { agent_id, message, system_instruction, run_id_tx } => {
+                    AcpCommand::RunTask { agent_id, message, system_instruction, attachments, run_id_tx } => {
                         let req_id = format!("run-{}", timestamp_ns());
                         pending_requests.insert(req_id.clone(), PendingRequest {
                             tx: run_id_tx,
@@ -228,8 +231,8 @@ async fn acp_loop(
                         let idempotency_key = format!("jiling-{}", timestamp_ns());
 
                         // Combine message and system_instruction into a single message field for compatibility
-                        let final_message = if let Some(si) = system_instruction {
-                            format!("{}\n\n{}", si, message)
+                        let final_message = if !system_instruction.is_empty() {
+                            format!("{}\n\n{}", system_instruction, message)
                         } else {
                             message
                         };
@@ -239,6 +242,10 @@ async fn acp_loop(
                             "agentId": agent_id,
                             "idempotencyKey": idempotency_key,
                         });
+
+                        if let Some(atts) = attachments {
+                            params["attachments"] = json!(atts);
+                        }
 
                         apply_provider_request_context(provider_dir, &mut params);
 
@@ -575,15 +582,16 @@ fn timestamp_ns() -> u128 {
 
 #[tauri::command]
 pub async fn execute_agent_acp_task(
-    state: tauri::State<'_, Arc<GlobalAcpManager>>,
     provider_id: String,
     provider_dir: String,
     agent: String,
     task: String,
-    system_instruction: Option<String>,
+    system_instruction: String,
+    attachments: Option<Vec<String>>,
+    manager: tauri::State<'_, Arc<GlobalAcpManager>>,
 ) -> Result<String, String> {
-    state
-        .run_task(provider_id, provider_dir, agent, task, system_instruction)
+    manager
+        .execute_task(provider_id, provider_dir, agent, task, system_instruction, attachments)
         .await
 }
 

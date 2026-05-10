@@ -708,15 +708,28 @@ export default function JilingPage() {
   }, [isConnected, isVideoOn, isSharing]);
 
   const handleWechatMessage = async (params: any) => {
-    const { text, requestId } = params;
+    const { text, media, requestId } = params;
     
-    // Find the latest selected adapter from providers list
-    const currentProviderId = selectedProviderIdRef.current;
-    const provider = providers.find(p => p.id === currentProviderId);
-    const adapter = provider?.adapter || adapterRef.current;
+    let targetProviderId = selectedProviderIdRef.current;
+    let cleanText = text;
+
+    // Route based on @ mention
+    if (text.toLowerCase().startsWith("@openclaw")) {
+      targetProviderId = "openclaw";
+      cleanText = text.substring(9).trim();
+      console.log("[Wechat] Routing to OpenClaw:", cleanText);
+    } else if (text.toLowerCase().startsWith("@autoclaw")) {
+      targetProviderId = "autoclaw";
+      cleanText = text.substring(9).trim();
+      console.log("[Wechat] Routing to AutoClaw:", cleanText);
+    }
+
+    // Find the adapter for the target provider
+    const provider = providers.find(p => p.id === targetProviderId);
+    const adapter = provider?.adapter;
     
     if (!adapter) {
-      console.error("[Wechat] No adapter found for provider:", currentProviderId);
+      console.error("[Wechat] No adapter found for provider:", targetProviderId);
       return;
     }
 
@@ -728,16 +741,17 @@ export default function JilingPage() {
           mode: "background_core",
           userFacingRole: "same_assistant"
         },
-        userRequest: text,
-        conversationContext: { recentUserIntent: text, locale: selectedLanguageRef.current },
+        userRequest: cleanText,
+        attachments: media ? [media] : undefined,
+        conversationContext: { recentUserIntent: cleanText, locale: selectedLanguageRef.current },
         executionPolicy: { askBeforeRiskyChanges: true, preferConciseProgress: true, produceSpeakableSummary: true },
         outputContract: { format: "markdown_with_titles", requireSpeakableSummary: true, requireSpokenReport: false },
       });
 
       upsertTask({
         runId: taskRef.runId,
-        title: `[微信] ${taskTitleFromRequest(text)}`,
-        providerName: provider?.name || providerLabel(currentProviderId),
+        title: `[微信] ${taskTitleFromRequest(cleanText)}`,
+        providerName: provider?.name || providerLabel(targetProviderId),
         phase: "submitted",
         startedAt: Date.now(),
         updatedAt: Date.now(),
