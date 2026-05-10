@@ -130,11 +130,9 @@ impl GlobalAcpManager {
             run_id_tx,
         });
 
-        let res = tokio::time::timeout(std::time::Duration::from_secs(30), run_id_rx.recv()).await;
-        match res {
-            Ok(Some(res)) => res,
-            Ok(None) => Err("Failed to receive run_id: channel closed".to_string()),
-            Err(_) => Err("Timed out waiting for run_id from ACP loop".to_string()),
+        match run_id_rx.recv().await {
+            Some(res) => res,
+            None => Err("Failed to receive run_id".to_string()),
         }
     }
 
@@ -253,15 +251,9 @@ async fn acp_loop(
 
     loop {
         tokio::select! {
-        Some(cmd) = rx.recv() => {
-            if !authenticated {
-                if let AcpCommand::RunTask { run_id_tx, .. } = cmd {
-                    let _ = run_id_tx.send(Err("ACP connection not authenticated yet".to_string())).await;
-                }
-                continue;
-            }
-            match cmd {
-                AcpCommand::RunTask { agent_id, message, system_instruction, attachments, silent, run_id_tx } => {
+            Some(cmd) = rx.recv(), if authenticated => {
+                match cmd {
+                    AcpCommand::RunTask { agent_id, message, system_instruction, attachments, silent, run_id_tx } => {
                         let req_id = format!("run-{}", timestamp_ns());
                         pending_requests.insert(req_id.clone(), PendingRequest {
                             tx: run_id_tx,
@@ -394,10 +386,7 @@ async fn acp_loop(
                     }
                     if v["event"] == "agent" {
                         let payload = &v["payload"];
-                        let original_run_id = payload["runId"].as_str()
-                            .or(payload["run_id"].as_str())
-                            .unwrap_or("")
-                            .to_string();
+                        let original_run_id = payload["runId"].as_str().unwrap_or("").to_string();
                         let mut mapped_run_id = original_run_id.clone();
 
                         // Map the dynamically generated AutoClaw runId back to the original task
@@ -405,9 +394,7 @@ async fn acp_loop(
                             mapped_run_id = mapped_id.clone();
                         }
 
-                        let stream = payload["stream"].as_str()
-                            .or(v["event"].as_str())
-                            .unwrap_or("");
+                        let stream = payload["stream"].as_str().unwrap_or("");
 
                         let db_lock = db.lock().await;
                         if stream == "assistant" {
@@ -427,17 +414,17 @@ async fn acp_loop(
                                     data: new_data
                                 }).unwrap_or(());
                             }
-                        } else if stream == "lifecycle" || stream == "status" {
-                            let phase = payload["data"]["phase"].as_str()
-                                .or(payload["data"]["status"].as_str())
-                                .unwrap_or("");
+                        } else if stream == "lifecycle" {
+                            let phase = payload["data"]["phase"].as_str().unwrap_or("");
                             let mut data = payload["data"].clone();
-                            if data.get("phase").is_none() {
-                                data["phase"] = json!(phase);
+                            if phase == "error" && data["error"].as_str().unwrap_or("").is_empty() {
+                                if let Some(message) = extract_error_message(payload) {
+                                    data["error"] = json!(message);
+                                }
                             }
-                            
+
                             let _ = db_lock.update_task_status(&mapped_run_id, phase);
-                            app_handle.emit("acp-event", AcpEvent {
+                             app_handle.emit("acp-event", AcpEvent {
                                 run_id: mapped_run_id.clone(),
                                 event_type: "lifecycle".to_string(),
                                 data
@@ -450,16 +437,13 @@ async fn acp_loop(
                         if res_id.starts_with("run-") {
                             if let Some((_, pending)) = pending_requests.remove(res_id) {
                                 if v["ok"] == true {
-                                    let run_id = v["payload"]["runId"].as_str()
-                                        .or(v["payload"]["run_id"].as_str())
-                                        .unwrap_or("")
-                                        .to_string();
+                                    let run_id = v["payload"]["runId"].as_str().unwrap_or("").to_string();
                                     if run_id.is_empty() {
                                         let _ = pending.tx.send(Err("Agent response missing runId".to_string())).await;
                                     } else {
                                         let db_lock = db.lock().await;
                                         let _ = db_lock.insert_task(&run_id, provider_id, "main", &pending.message, pending.silent);
-                                        let _ = pending.tx.send(Ok(run_id.clone())).await;
+                                        let _ = pending.tx.send(Ok(run_id)).await;
                                     }
                                 } else {
                                     let message = extract_error_message(&v)

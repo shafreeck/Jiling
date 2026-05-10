@@ -436,12 +436,29 @@ export default function JilingPage() {
   const textInputRef = useRef<HTMLDivElement>(null);
   const [showLogs, setShowLogs] = useState(false);
   const [isOnline, setIsOnline] = useState(false);
-  const [isWechatConnected, setIsWechatConnected] = useState(false);
+  const [isWechatConnected, setIsWechatConnected] = useState<boolean>(false);
   const [wechatQrCodeUrl, setWechatQrCodeUrl] = useState<string | null>(null);
   const [isWechatModalOpen, setIsWechatModalOpen] = useState(false);
   const [wechatLoginStatus, setWechatLoginStatus] = useState<"idle" | "logging_in" | "success" | "error">("idle");
   const [wechatError, setWechatError] = useState<string | undefined>(undefined);
   const tickTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Auto-connect Wechat on startup if it was previously enabled
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("jiling_wechat_enabled") === "true";
+      console.log("[Wechat] Initialized from localStorage:", saved);
+      if (saved) {
+        setIsWechatConnected(true);
+        console.log("[Wechat] Auto-connecting previously enabled WeChat service...");
+        invoke("wechat_login").catch(e => {
+          console.error("[Wechat] Auto-connection failed:", e);
+          setIsWechatConnected(false);
+          localStorage.setItem("jiling_wechat_enabled", "false");
+        });
+      }
+    }
+  }, []);
 
   useEffect(() => {
     let unlistenFn: (() => void) | null = null;
@@ -479,12 +496,15 @@ export default function JilingPage() {
           console.log("[Wechat] Status change:", payload.params.state);
           if (payload.params.state === "ready") {
             setIsWechatConnected(true);
+            localStorage.setItem("jiling_wechat_enabled", "true");
             setWechatLoginStatus("success");
             setTimeout(() => setIsWechatModalOpen(false), 5000);
           } else if (payload.params.state === "error") {
             console.error("[Wechat] Gateway error:", payload.params.error);
             setWechatError(payload.params.error);
             setWechatLoginStatus("error");
+            setIsWechatConnected(false);
+            localStorage.setItem("jiling_wechat_enabled", "false");
           }
         } else if (payload.method === "message_received") {
           handleWechatMessage(payload.params);
@@ -2281,7 +2301,10 @@ export default function JilingPage() {
             <Button
               variant="ghost"
               size="icon"
-              onClick={isWechatConnected ? () => invoke("wechat_logout").then(() => setIsWechatConnected(false)) : () => {
+              onClick={isWechatConnected ? () => invoke("wechat_logout").then(() => {
+                setIsWechatConnected(false);
+                localStorage.setItem("jiling_wechat_enabled", "false");
+              }) : () => {
                 setIsWechatModalOpen(true);
                 setWechatLoginStatus("idle");
                 setWechatQrCodeUrl(null);
@@ -2408,6 +2431,7 @@ export default function JilingPage() {
           onLogout={async () => {
             await invoke("wechat_destroy_session");
             setIsWechatConnected(false);
+            localStorage.setItem("jiling_wechat_enabled", "false");
             setWechatLoginStatus("idle");
             setWechatQrCodeUrl(null);
             // Now start login process again

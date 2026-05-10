@@ -64,6 +64,8 @@ const log = (msg: string) => {
   console.log(`[Gateway] ${msg}`);
 };
 
+
+
 async function main() {
   const stateDir = process.env.OPENCLAW_STATE_DIR || path.join(process.env.HOME || ".", ".openclaw", "openclaw-weixin");
   if (!fs.existsSync(stateDir)) {
@@ -129,6 +131,11 @@ async function main() {
       } catch (e) {
         // ignore
       }
+    });
+
+    rl.on("close", () => {
+      log("STDIN closed, process exiting...");
+      process.exit(0);
     });
 
     await bot.wait();
