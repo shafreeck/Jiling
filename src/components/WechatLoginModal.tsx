@@ -12,6 +12,7 @@ interface WechatLoginModalProps {
   qrCodeUrl: string | null;
   status: "idle" | "logging_in" | "success" | "error";
   error?: string;
+  onLogout?: () => void;
 }
 
 export function WechatLoginModal({
@@ -19,7 +20,8 @@ export function WechatLoginModal({
   onClose,
   qrCodeUrl,
   status,
-  error
+  error,
+  onLogout
 }: WechatLoginModalProps) {
   return (
     <AnimatePresence>
