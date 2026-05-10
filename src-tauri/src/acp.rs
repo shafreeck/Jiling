@@ -385,9 +385,11 @@ async fn acp_loop(
                         continue;
                     }
 
-                    if v["event"] == "agent" {
-                        let payload = &v["payload"];
-                        let original_run_id = payload["runId"].as_str().unwrap_or("").to_string();
+                        let original_run_id = payload["runId"].as_str().map(|s| s.to_string())
+                            .or_else(|| payload["runId"].as_u64().map(|n| n.to_string()))
+                            .or_else(|| payload["run_id"].as_str().map(|s| s.to_string()))
+                            .or_else(|| payload["run_id"].as_u64().map(|n| n.to_string()))
+                            .unwrap_or_default();
                         let mut mapped_run_id = original_run_id.clone();
 
                         // Map the dynamically generated AutoClaw runId back to the original task
@@ -395,7 +397,9 @@ async fn acp_loop(
                             mapped_run_id = mapped_id.clone();
                         }
 
-                        let stream = payload["stream"].as_str().unwrap_or("");
+                        let stream = payload["stream"].as_str()
+                            .or(v["event"].as_str()) // Some implementations use v["event"]
+                            .unwrap_or("");
 
                         let db_lock = db.lock().await;
                         if stream == "assistant" {
@@ -415,9 +419,15 @@ async fn acp_loop(
                                     data: new_data
                                 }).unwrap_or(());
                             }
-                        } else if stream == "lifecycle" {
-                            let phase = payload["data"]["phase"].as_str().unwrap_or("");
+                        } else if stream == "lifecycle" || stream == "status" {
+                            let phase = payload["data"]["phase"].as_str()
+                                .or(payload["data"]["status"].as_str())
+                                .unwrap_or("");
                             let mut data = payload["data"].clone();
+                            if data.get("phase").is_none() {
+                                data["phase"] = json!(phase);
+                            }
+                            
                             if phase == "error" && data["error"].as_str().unwrap_or("").is_empty() {
                                 if let Some(message) = extract_error_message(payload) {
                                     data["error"] = json!(message);
@@ -425,7 +435,7 @@ async fn acp_loop(
                             }
 
                             let _ = db_lock.update_task_status(&mapped_run_id, phase);
-                             app_handle.emit("acp-event", AcpEvent {
+                            app_handle.emit("acp-event", AcpEvent {
                                 run_id: mapped_run_id.clone(),
                                 event_type: "lifecycle".to_string(),
                                 data
@@ -438,7 +448,11 @@ async fn acp_loop(
                         if res_id.starts_with("run-") {
                             if let Some((_, pending)) = pending_requests.remove(res_id) {
                                 if v["ok"] == true {
-                                    let run_id = v["payload"]["runId"].as_str().unwrap_or("").to_string();
+                                    let run_id = v["payload"]["runId"].as_str().map(|s| s.to_string())
+                                        .or_else(|| v["payload"]["runId"].as_u64().map(|n| n.to_string()))
+                                        .or_else(|| v["payload"]["run_id"].as_str().map(|s| s.to_string()))
+                                        .or_else(|| v["payload"]["run_id"].as_u64().map(|n| n.to_string()))
+                                        .unwrap_or_default();
                                     if run_id.is_empty() {
                                         let _ = pending.tx.send(Err("Agent response missing runId".to_string())).await;
                                     } else {

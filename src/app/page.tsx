@@ -827,12 +827,6 @@ export default function JilingPage() {
     }
 
     try {
-      // Ensure model state is synced before submitting the task
-      const currentModel = selectedModelRef.current;
-      if (currentModel && adapter.switchModel) {
-        await adapter.switchModel(currentModel);
-      }
-
       const taskRef = await adapter.submitTask({
         identity: {
           systemName: "机灵",

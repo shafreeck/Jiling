@@ -35,16 +35,17 @@ const jilingAgent: Agent = {
       }, 60000);
 
       const handler = (line: string) => {
+        log(`Gateway STDIN received: ${line.substring(0, 100)}${line.length > 100 ? "..." : ""}`);
         try {
           const msg = JSON.parse(line);
           if (msg.type === "response" && msg.requestId === requestId) {
             clearTimeout(timeout);
             rl.off("line", handler);
-            log(`Sending response for ${requestId}`);
+            log(`Matching response found for ${requestId}, resolving chat Promise`);
             resolve(msg.payload);
           }
         } catch (e) {
-          // ignore
+          log(`Failed to parse STDIN line: ${e}`);
         }
       };
       rl.on("line", handler);
