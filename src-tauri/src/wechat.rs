@@ -118,8 +118,32 @@ impl WechatManager {
     pub async fn logout(&self) -> Result<(), String> {
         let mut child_lock = self.child.lock().await;
         if let Some(mut child) = child_lock.take() {
+            // Kill the process immediately, but DO NOT delete files here
             let _ = child.kill().await;
+            println!("[Wechat] Gateway process killed.");
         }
+        Ok(())
+    }
+
+    pub async fn cleanup_session(&self) -> Result<(), String> {
+        // Physical cleanup
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        let state_dir = std::path::PathBuf::from(format!("{}/.jiling/weixin", home));
+        
+        // The SDK seems to append "openclaw-weixin" to the state dir or use it as a subfolder
+        let sub_dir = state_dir.join("openclaw-weixin");
+        
+        if sub_dir.exists() {
+            let _ = std::fs::remove_dir_all(&sub_dir);
+            println!("[Wechat] Removed sub-directory: {:?}", sub_dir);
+        }
+
+        let accounts_json = state_dir.join("accounts.json");
+        let accounts_dir = state_dir.join("accounts");
+        if accounts_json.exists() { let _ = std::fs::remove_file(accounts_json); }
+        if accounts_dir.exists() { let _ = std::fs::remove_dir_all(accounts_dir); }
+        
+        println!("[Wechat] Physical session cleanup complete.");
         Ok(())
     }
 
@@ -149,7 +173,16 @@ pub async fn wechat_login(manager: tauri::State<'_, Arc<WechatManager>>) -> Resu
 
 #[tauri::command]
 pub async fn wechat_logout(manager: tauri::State<'_, Arc<WechatManager>>) -> Result<(), String> {
+    // This now only stops the process, preserving the session
     manager.logout().await
+}
+
+#[tauri::command]
+pub async fn wechat_destroy_session(manager: tauri::State<'_, Arc<WechatManager>>) -> Result<(), String> {
+    // This is the true logout: stop process AND delete files
+    manager.logout().await?;
+    manager.cleanup_session().await?;
+    Ok(())
 }
 
 #[tauri::command]

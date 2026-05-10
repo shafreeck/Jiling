@@ -29,6 +29,7 @@ import {
   LogOut,
   Maximize2,
   Languages,
+  MessageCircle,
   XCircle,
   History as HistoryIcon,
   Pin,
@@ -400,6 +401,7 @@ export default function JilingPage() {
   const [audioFeatures, setAudioFeatures] = useState<AudioFeatures>(DEFAULT_AUDIO_FEATURES);
   const [logs, setLogs] = useState<string[]>(["系统就绪，等待语音指令..."]);
   const [providers, setProviders] = useState<ProviderOption[]>([]);
+  const providersRef = useRef<ProviderOption[]>([]);
   const [selectedProviderId, setSelectedProviderId] = useState<string>("openclaw");
   const [selectedVoice, setSelectedVoice] = useState<string>("none");
 
@@ -409,6 +411,7 @@ export default function JilingPage() {
   const [enableA2UI, setEnableA2UI] = useState(true);
   const [showTextInput, setShowTextInput] = useState(false);
   const [textInputValue, setTextInputValue] = useState("");
+  const isComposingRef = useRef(false);
   const [isTextInputPinned, setIsTextInputPinned] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
   const [isOnline, setIsOnline] = useState(false);
@@ -452,11 +455,13 @@ export default function JilingPage() {
           setWechatQrCodeUrl(payload.params.url);
           setWechatLoginStatus("logging_in");
         } else if (payload.method === "status") {
+          console.log("[Wechat] Status change:", payload.params.state);
           if (payload.params.state === "ready") {
             setIsWechatConnected(true);
             setWechatLoginStatus("success");
             setTimeout(() => setIsWechatModalOpen(false), 5000);
           } else if (payload.params.state === "error") {
+            console.error("[Wechat] Gateway error:", payload.params.error);
             setWechatError(payload.params.error);
             setWechatLoginStatus("error");
           }
@@ -490,6 +495,7 @@ export default function JilingPage() {
 
   // 当选择的 Provider 改变时，同步更新 adapterRef，无需等待语音启动
   useEffect(() => {
+    providersRef.current = providers;
     const selected = providers.find(p => p.id === selectedProviderId);
     if (selected) {
       adapterRef.current = selected.adapter;
@@ -725,11 +731,15 @@ export default function JilingPage() {
     }
 
     // Find the adapter for the target provider
-    const provider = providers.find(p => p.id === targetProviderId);
+    console.log("[Wechat] Attempting to route to:", targetProviderId);
+    console.log("[Wechat] Available providers:", providersRef.current.map(p => p.id));
+    
+    const provider = providersRef.current.find(p => p.id === targetProviderId);
     const adapter = provider?.adapter;
     
     if (!adapter) {
       console.error("[Wechat] No adapter found for provider:", targetProviderId);
+      // If we are still probing, maybe we should wait?
       return;
     }
 
@@ -761,6 +771,9 @@ export default function JilingPage() {
       void adapter.subscribeTask(taskRef, {
         onProgress: (e) => {
           appendTaskProgress(taskRef.runId, e.text);
+        },
+        onOutputUpdate: (e) => {
+          appendTaskOutput(taskRef.runId, e.output);
         },
         onCompleted: (e) => {
           let outputText = formatTaskOutput(e.output);
@@ -801,7 +814,7 @@ export default function JilingPage() {
 
   const handleTextInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // 如果正在使用输入法组词，不触发发送
-    if (e.nativeEvent.isComposing) return;
+    if (isComposingRef.current) return;
 
     if (e.key === 'Enter' || e.keyCode === 13) {
       if (!e.shiftKey) {
@@ -837,7 +850,7 @@ export default function JilingPage() {
       upsertTask({
         runId: taskRef.runId,
         title: taskTitleFromRequest(textInputValue),
-        providerName: providers.find(p => p.id === selectedProviderIdRef.current)?.name || providerLabel(selectedProviderIdRef.current),
+        providerName: providersRef.current.find(p => p.id === selectedProviderIdRef.current)?.name || providerLabel(selectedProviderIdRef.current),
         phase: "submitted",
         startedAt: Date.now(),
         updatedAt: Date.now(),
@@ -848,6 +861,9 @@ export default function JilingPage() {
         onProgress: (e) => {
           addLog(`[代理] ${e.text}`);
           appendTaskProgress(taskRef.runId, e.text);
+        },
+        onOutputUpdate: (e) => {
+          appendTaskOutput(taskRef.runId, e.output);
         },
         onCompleted: (e) => {
           const outputText = formatTaskOutput(e.output);
@@ -1055,6 +1071,25 @@ export default function JilingPage() {
     );
   };
 
+  const appendTaskOutput = (runId: string, text: string) => {
+    setAgentTasks((prev) =>
+      prev.map((t) => {
+        if (t.runId !== runId) return t;
+        
+        let newOutput = t.output || "";
+        // 如果新到的文本包含了已有的内容（说明是快照模式），则直接替换
+        if (text.length > newOutput.length && text.startsWith(newOutput)) {
+          newOutput = text;
+        } else {
+          // 否则按增量拼接
+          newOutput += text;
+        }
+        
+        return { ...t, output: newOutput, updatedAt: Date.now() };
+      })
+    );
+  };
+
   const stopMic = () => {
     processorRef.current?.disconnect();
     sourceRef.current?.disconnect();
@@ -1146,31 +1181,45 @@ export default function JilingPage() {
 
   useEffect(() => {
     const probeProviders = async () => {
+      console.log("[Provider] Probing for providers...");
       try {
         const home = await import("@tauri-apps/api/path").then(m => m.homeDir());
         const { exists } = await import("@tauri-apps/plugin-fs");
         const detected: ProviderOption[] = [];
 
+        console.log("[Provider] Home dir:", home);
+
         if (await exists(home + "/.openclaw")) {
+          console.log("[Provider] Found .openclaw");
           detected.push({ id: "openclaw", name: "OpenClaw", adapter: new AcpProviderAdapter("openclaw", "OpenClaw", ".openclaw") });
         }
         if (await exists(home + "/.openclaw-autoclaw")) {
+          console.log("[Provider] Found .openclaw-autoclaw");
           detected.push({ id: "autoclaw", name: "AutoClaw", adapter: new AcpProviderAdapter("autoclaw", "AutoClaw", ".openclaw-autoclaw") });
         }
         if (await exists(home + "/.hermes")) {
+          console.log("[Provider] Found .hermes");
           detected.push({ id: "hermes", name: "Hermes", adapter: new AcpProviderAdapter("hermes", "Hermes", ".hermes") });
         }
 
+        console.log("[Provider] Detected providers:", detected.map(p => p.id));
+
         if (detected.length > 0) {
           setProviders(detected);
-          // Only set default if no saved provider exists in localStorage
+          providersRef.current = detected; // Immediate update for ref
           const savedProvider = localStorage.getItem("jiling_provider");
           if (!savedProvider || !detected.find(p => p.id === savedProvider)) {
+            console.log("[Provider] Setting default provider:", detected[0].id);
             setSelectedProviderId(detected[0].id);
+          } else {
+            console.log("[Provider] Using saved provider:", savedProvider);
+            setSelectedProviderId(savedProvider);
           }
+        } else {
+          console.warn("[Provider] No providers detected!");
         }
       } catch (e) {
-        console.error("Provider detection failed", e);
+        console.error("[Provider] Detection failed:", e);
       }
     };
     probeProviders();
@@ -1223,7 +1272,7 @@ export default function JilingPage() {
       streamerRef.current = streamer;
 
       let profile: AgentRuntimeProfile | undefined;
-      const selected = providers.find(p => p.id === selectedProviderIdRef.current);
+      const selected = providersRef.current.find(p => p.id === selectedProviderIdRef.current);
       if (selected) {
         adapterRef.current = selected.adapter;
         profile = await selected.adapter.agentProfile();
@@ -1430,7 +1479,7 @@ export default function JilingPage() {
         let result;
         if (call.name === "execute_agent_acp_task" && adapterRef.current) {
           const adapter = adapterRef.current;
-          const selectedProvider = providers.find((provider) => provider.id === selectedProviderIdRef.current);
+          const selectedProvider = providersRef.current.find((provider) => provider.id === selectedProviderIdRef.current);
           const taskText = String(callArgs.task || "");
           const jilingSkills = `\n\n## Jiling A2UI
 For tasks requiring structured visualization or approval (like lists, charts, approvals), you can return the standard A2UI JSON. For normal conversation or simple answers, use standard Markdown. Do not use cards unnecessarily.
@@ -1480,6 +1529,9 @@ Note: If you output A2UI, return ONLY the JSON without any other text.`;
             onProgress: (e) => {
               addLog(`[代理] ${e.text}`);
               appendTaskProgress(taskRef.runId, e.text);
+            },
+            onOutputUpdate: (e) => {
+              appendTaskOutput(taskRef.runId, e.output);
             },
             onCompleted: (e) => {
               const outputText = formatTaskOutput(e.output);
@@ -1675,7 +1727,7 @@ Note: If you output A2UI, return ONLY the JSON without any other text.`;
       const requestId = data?.requestId || "default";
       const agentId = task.providerName || "main";
 
-      const adapter = providers.find(p => p.id === selectedProviderId)?.adapter;
+      const adapter = providersRef.current.find(p => p.id === selectedProviderId)?.adapter;
 
       if (!adapter) {
         throw new Error(`找不到对应的 Provider: ${selectedProviderId}`);
@@ -2119,6 +2171,24 @@ Note: If you output A2UI, return ONLY the JSON without any other text.`;
             <Button
               variant="ghost"
               size="icon"
+              onClick={isWechatConnected ? () => invoke("wechat_logout").then(() => setIsWechatConnected(false)) : () => {
+                setIsWechatModalOpen(true);
+                setWechatLoginStatus("idle");
+                setWechatQrCodeUrl(null);
+                invoke("wechat_login");
+              }}
+              className={`h-10 w-10 rounded-full border backdrop-blur-md transition-all duration-300 [app-region:no-drag] ${isWechatConnected
+                ? "bg-green-500/20 text-green-500 border-green-500/20 shadow-[0_0_15px_rgba(34,197,94,0.1)]"
+                : "bg-white/5 text-white/60 border-white/10 hover:bg-white/10 hover:text-white"
+              }`}
+              title={isWechatConnected ? "断开微信" : "连接微信"}
+            >
+              <MessageCircle className="h-5 w-5" />
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => setShowSettings(true)}
               className="h-10 w-10 rounded-full border border-white/10 bg-white/5 backdrop-blur-md text-white/60 hover:bg-white/10 hover:text-white transition-all [app-region:no-drag]"
             >
@@ -2162,6 +2232,8 @@ Note: If you output A2UI, return ONLY the JSON without any other text.`;
                   value={textInputValue}
                   onChange={(e) => setTextInputValue(e.target.value)}
                   onKeyDown={handleTextInputKeyDown}
+                  onCompositionStart={() => { isComposingRef.current = true; }}
+                  onCompositionEnd={() => { isComposingRef.current = false; }}
                   placeholder="键入指令，按 Enter 直接派发给 Agent，Shift+Enter 换行..."
                   className="w-full h-32 bg-transparent text-white placeholder-white/30 outline-none resize-none text-sm leading-relaxed"
                   autoFocus
@@ -2196,17 +2268,6 @@ Note: If you output A2UI, return ONLY the JSON without any other text.`;
               setIsTaskPinned(true);
             }
           }}
-          isWechatConnected={isWechatConnected}
-          onWechatConnect={() => {
-            setIsWechatModalOpen(true);
-            setWechatLoginStatus("idle");
-            setWechatQrCodeUrl(null);
-            invoke("wechat_login");
-          }}
-          onWechatDisconnect={() => {
-            invoke("wechat_logout");
-            setIsWechatConnected(false);
-          }}
         />
 
         <WechatLoginModal
@@ -2215,12 +2276,12 @@ Note: If you output A2UI, return ONLY the JSON without any other text.`;
           qrCodeUrl={wechatQrCodeUrl}
           status={wechatLoginStatus}
           error={wechatError}
-          onLogout={() => {
-            invoke("wechat_logout");
+          onLogout={async () => {
+            await invoke("wechat_destroy_session");
             setIsWechatConnected(false);
             setWechatLoginStatus("idle");
             setWechatQrCodeUrl(null);
-            // Don't close modal, it will show "idle" or trigger wechat_login again
+            // Now start login process again
             invoke("wechat_login"); 
           }}
         />

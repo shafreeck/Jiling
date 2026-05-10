@@ -1,5 +1,7 @@
 import { isLoggedIn, login, logout, start, type Agent, type ChatRequest, type ChatResponse } from "weixin-agent-sdk";
 import * as readline from "readline";
+import fs from "fs";
+import path from "path";
 
 const rl = readline.createInterface({
   input: process.stdin,
@@ -41,30 +43,50 @@ const jilingAgent: Agent = {
   },
 };
 
+let logStream: fs.WriteStream | null = null;
+const log = (msg: string) => {
+  const timestamp = new Date().toISOString();
+  const formattedMsg = `[${timestamp}] ${msg}`;
+  if (logStream) {
+    logStream.write(`${formattedMsg}\n`);
+  }
+  // Use originalLog if defined, or console.log
+  console.log(`[Gateway] ${msg}`);
+};
+
 async function main() {
-  console.log("[Gateway] Starting Wechat Gateway...");
+  const stateDir = process.env.OPENCLAW_STATE_DIR || path.join(process.env.HOME || ".", ".openclaw", "openclaw-weixin");
+  if (!fs.existsSync(stateDir)) {
+    fs.mkdirSync(stateDir, { recursive: true });
+  }
+  logStream = fs.createWriteStream(path.join(stateDir, "gateway.log"), { flags: "a" });
+
+  log(`Starting Wechat Gateway with state directory: ${stateDir}`);
+  sendEvent("status", { state: "starting" });
   
   // Hack: Intercept qrcode-terminal to get the raw URL
   try {
     const qrcodeterminal = await import("qrcode-terminal");
     const originalGenerate = qrcodeterminal.default.generate;
     qrcodeterminal.default.generate = (url: string, options: any, callback?: (qr: string) => void) => {
-      console.log("[Gateway] Intercepted QR URL from qrcode-terminal:", url);
+      log(`Intercepted QR URL from qrcode-terminal: ${url}`);
       sendEvent("qr_code_url", { url });
       // Still call original to show in terminal
       return originalGenerate.call(qrcodeterminal.default, url, options, callback);
     };
   } catch (e) {
-    console.error("[Gateway] Failed to intercept qrcode-terminal", e);
+    log(`Failed to intercept qrcode-terminal: ${e}`);
   }
 
-  sendEvent("status", { state: "starting" });
-
+  const originalLog = console.log;
   try {
     // Intercept console.log to catch QR code or login messages
-    const originalLog = console.log;
     console.log = (...args: any[]) => {
       const str = args.join(" ");
+      if (logStream) {
+        logStream.write(`[${new Date().toISOString()}] [LOG] ${str}\n`);
+      }
+      
       if (str.includes("https://login.weixin.qq.com/l/")) {
         const url = str.match(/https:\/\/login\.weixin\.qq\.com\/l\/[^\s]+/)?.[0];
         if (url) {
@@ -74,14 +96,13 @@ async function main() {
       originalLog.apply(console, args);
     };
 
-    console.log("[Gateway] Checking login status...");
+    log("Checking login status...");
     if (!isLoggedIn()) {
-      console.log("[Gateway] Not logged in. Calling login()...");
+      log("Not logged in. Calling login()...");
       await login();
-      sendEvent("status", { state: "logged_in" });
+      log("login() completed");
     } else {
-      console.log("[Gateway] Already logged in, resuming session...");
-      sendEvent("status", { state: "logged_in" });
+      log("Already logged in, resuming session...");
     }
 
     bot = start(jilingAgent);
@@ -115,8 +136,18 @@ function handleCommand(msg: any) {
       }
       break;
     case "logout":
-      console.log("[Gateway] Calling logout()...");
+      log("Calling logout() and cleaning up accounts directory...");
       logout();
+      try {
+        const stateDir = process.env.OPENCLAW_STATE_DIR || path.join(process.env.HOME || ".", ".openclaw", "openclaw-weixin");
+        const accountsDir = path.join(stateDir, "accounts");
+        if (fs.existsSync(accountsDir)) {
+          fs.rmSync(accountsDir, { recursive: true, force: true });
+          log("Accounts directory cleaned up.");
+        }
+      } catch (e) {
+        log(`Failed to clean up accounts directory: ${e}`);
+      }
       process.exit(0);
       break;
   }

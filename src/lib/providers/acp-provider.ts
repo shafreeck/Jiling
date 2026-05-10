@@ -122,7 +122,7 @@ export class AcpProviderAdapter implements AgentProviderAdapter {
     // We pass `main` as the default agent for now, or read from config
 
     const systemInstruction = task.identity.runtimeRoleDescription || "";
-    const attachments = task.attachments?.map(a => a.filePath).filter(Boolean) as string[];
+    const attachments = (task.attachments?.map(a => a.filePath).filter(Boolean) as string[]) || [];
 
     const runId = await invoke<string>("execute_agent_acp_task", {
       providerId: this.id,
@@ -144,6 +144,9 @@ export class AcpProviderAdapter implements AgentProviderAdapter {
       if (event_type === "assistant") {
         if (handlers.onProgress && data.text) {
           handlers.onProgress({ text: data.text, channel: "assistant" });
+        }
+        if (handlers.onOutputUpdate && data.text) {
+          handlers.onOutputUpdate({ output: data.text, incremental: true });
         }
       } else if (event_type === "lifecycle") {
         if (data.phase === "end" || data.phase === "completed" || data.phase === "success") {

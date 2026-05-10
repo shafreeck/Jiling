@@ -111,6 +111,7 @@ export type AgentAbortResult = {
 
 export type AgentTaskEventHandlers = {
   onProgress?: (event: { text: string; channel?: "assistant" | "tool" | "system" }) => void;
+  onOutputUpdate?: (event: { output: string; incremental: boolean }) => void;
   onNeedsUserInput?: (event: { question: string; options?: string[] }) => void;
   onCompleted?: (event: { output: JilingTaskOutput | string }) => void;
   onFailed?: (event: { error: string; recoverable: boolean }) => void;

@@ -54,6 +54,7 @@ pub fn run() {
             acp::update_agent_task_output,
             wechat::wechat_login,
             wechat::wechat_logout,
+            wechat::wechat_destroy_session,
             wechat::wechat_respond,
             commands::get_api_key,
             commands::get_api_key_status,

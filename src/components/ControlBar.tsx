@@ -14,8 +14,7 @@ import {
   X,
   PhoneOff,
   MoreVertical,
-  Keyboard,
-  MessageCircle
+  Keyboard
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { 
@@ -40,9 +39,6 @@ interface ControlBarProps {
   isBusy?: boolean;
   showTextInput: boolean;
   onToggleTextInput: () => void;
-  isWechatConnected: boolean;
-  onWechatConnect: () => void;
-  onWechatDisconnect: () => void;
 }
 
 export function ControlBar({
@@ -60,9 +56,6 @@ export function ControlBar({
   isBusy,
   showTextInput,
   onToggleTextInput,
-  isWechatConnected,
-  onWechatConnect,
-  onWechatDisconnect
 }: ControlBarProps) {
   return (
     <TooltipProvider>
@@ -163,23 +156,6 @@ export function ControlBar({
           <TooltipContent><p>{showTextInput ? "关闭输入" : "文字输入"}</p></TooltipContent>
         </Tooltip>
 
-        <Tooltip>
-          <TooltipTrigger 
-            render={
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={isWechatConnected ? onWechatDisconnect : onWechatConnect}
-                className={`h-12 w-12 rounded-full transition-all ${
-                  isWechatConnected ? "bg-green-500/20 text-green-500 shadow-[0_0_15px_rgba(34,197,94,0.1)] hover:bg-green-500/30" : "hover:bg-white/10 text-white/60"
-                }`}
-              >
-                <MessageCircle className="h-5 w-5" />
-              </Button>
-            }
-          />
-          <TooltipContent><p>{isWechatConnected ? "断开微信" : "连接微信"}</p></TooltipContent>
-        </Tooltip>
 
         <Tooltip>
           <TooltipTrigger 
