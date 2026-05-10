@@ -403,7 +403,9 @@ function resampleTo16k(input: Float32Array, inputRate: number) {
 }
 
 const JILING_SKILLS = `\n\n## Jiling A2UI
-For tasks requiring structured visualization or approval (like lists, charts, approvals), you can return the standard A2UI JSON. For normal conversation or simple answers, use standard Markdown. Do not use cards unnecessarily.
+Standard Markdown responses are first-class citizens and have the same status as A2UI cards. For natural reading content like literature, poems, and long articles, you are encouraged to use standard Markdown directly if no structured interaction is needed.
+
+For tasks requiring structured visualization or approval (like lists, charts, approvals), you can return the standard A2UI JSON. Do not use cards unnecessarily.
 
 Available components:
 - "ApprovalCard": For task approvals or confirmations. Props: { "title": string, "description": string, "severity": "info"|"warning"|"critical", "actionLabel": string }. Note: "description" supports Markdown (tables, formatting).
