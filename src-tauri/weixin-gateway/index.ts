@@ -1,4 +1,4 @@
-import { login, start, type Agent, type ChatRequest, type ChatResponse } from "weixin-agent-sdk";
+import { isLoggedIn, login, logout, start, type Agent, type ChatRequest, type ChatResponse } from "weixin-agent-sdk";
 import * as readline from "readline";
 
 const rl = readline.createInterface({
@@ -74,9 +74,15 @@ async function main() {
       originalLog.apply(console, args);
     };
 
-    console.log("[Gateway] Calling login()...");
-    await login();
-    sendEvent("status", { state: "logged_in" });
+    console.log("[Gateway] Checking login status...");
+    if (!isLoggedIn()) {
+      console.log("[Gateway] Not logged in. Calling login()...");
+      await login();
+      sendEvent("status", { state: "logged_in" });
+    } else {
+      console.log("[Gateway] Already logged in, resuming session...");
+      sendEvent("status", { state: "logged_in" });
+    }
 
     bot = start(jilingAgent);
     
@@ -109,6 +115,8 @@ function handleCommand(msg: any) {
       }
       break;
     case "logout":
+      console.log("[Gateway] Calling logout()...");
+      logout();
       process.exit(0);
       break;
   }
