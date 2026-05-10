@@ -127,7 +127,7 @@ export function ControlBar({
                 size="icon"
                 onClick={onToggleTranscript}
                 className={`h-12 w-12 rounded-full transition-all ${
-                  showTranscript ? "bg-white/20 text-white" : "hover:bg-white/10 text-white/60"
+                  showTranscript ? "bg-white/20 text-white" : "hover:bg-white/10 text-white/70 hover:text-white"
                 }`}
               >
                 <Captions className="h-5 w-5" />
@@ -146,7 +146,7 @@ export function ControlBar({
                 onClick={onToggleTextInput}
                 data-keyboard-toggle="true"
                 className={`h-12 w-12 rounded-full transition-all ${
-                  showTextInput ? "bg-white/20 text-white" : "hover:bg-white/10 text-white/60"
+                  showTextInput ? "bg-white/20 text-white" : "hover:bg-white/10 text-white/70 hover:text-white"
                 }`}
               >
                 <Keyboard className="h-5 w-5" />
