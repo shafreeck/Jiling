@@ -52,6 +52,7 @@ export type JilingTaskEnvelope = {
     preferredRuntime?: "codex" | "gemini" | "claude-code" | "auto";
   };
   userRequest: string;
+  model?: string;
   attachments?: {
     type: "image" | "audio" | "video" | "file";
     filePath: string;
@@ -128,4 +129,6 @@ export interface AgentProviderAdapter {
   subscribeTask(ref: AgentTaskRef, handlers: AgentTaskEventHandlers): Promise<() => void>;
   waitTask(ref: AgentTaskRef, timeoutMs?: number): Promise<AgentTaskSnapshot>;
   abortTask(ref: AgentTaskRef): Promise<AgentAbortResult>;
+  listModels?(): Promise<Array<{ id: string; name: string }>>;
+  switchModel?(modelId: string): Promise<void>;
 }

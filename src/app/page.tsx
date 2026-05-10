@@ -35,6 +35,7 @@ import {
   History as HistoryIcon,
   Pin,
   PinOff,
+  Cpu,
 } from "lucide-react";
 import { AuraRenderer } from "@/components/AuraRenderer";
 import { motion, AnimatePresence } from "framer-motion";
@@ -420,6 +421,8 @@ export default function JilingPage() {
   const providersRef = useRef<ProviderOption[]>([]);
   const [selectedProviderId, setSelectedProviderId] = useState<string>("openclaw");
   const [selectedVoice, setSelectedVoice] = useState<string>("none");
+  const [availableModels, setAvailableModels] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedModel, setSelectedModel] = useState<string | null>(null);
 
   const isHydratedRef = useRef(false);
 
@@ -517,8 +520,40 @@ export default function JilingPage() {
     const selected = providers.find(p => p.id === selectedProviderId);
     if (selected) {
       adapterRef.current = selected.adapter;
+      
+      if (selected.adapter.listModels) {
+        selected.adapter.listModels().then(models => {
+          setAvailableModels(models);
+          if (models.length > 0) {
+            setSelectedModel(prev => {
+              const currentValid = models.find(m => m.id === prev);
+              const nextModelId = currentValid ? prev : models[0].id;
+              
+              // 自动对齐模型状态到后端
+              if (selected.adapter.switchModel && nextModelId) {
+                selected.adapter.switchModel(nextModelId);
+              }
+              
+              return nextModelId;
+            });
+          } else {
+            setSelectedModel(null);
+          }
+        });
+      } else {
+        setAvailableModels([]);
+        setSelectedModel(null);
+      }
     }
   }, [selectedProviderId, providers]);
+
+  const handleModelChange = (modelId: string) => {
+    if (modelId === selectedModel) return;
+    setSelectedModel(modelId);
+    if (adapterRef.current?.switchModel) {
+      adapterRef.current.switchModel(modelId);
+    }
+  };
   const [toast, setToast] = useState<{ message: string; type: "info" | "error" } | null>(null);
 
   const showToast = (message: string, type: "info" | "error" = "info") => {
@@ -591,10 +626,12 @@ export default function JilingPage() {
 
   const selectedVoiceRef = useRef(selectedVoice);
   const selectedProviderIdRef = useRef(selectedProviderId);
+  const selectedModelRef = useRef(selectedModel);
   const selectedLanguageRef = useRef(selectedLanguage);
   const isMutedRef = useRef(isMuted);
   useEffect(() => { selectedVoiceRef.current = selectedVoice; }, [selectedVoice]);
   useEffect(() => { selectedProviderIdRef.current = selectedProviderId; }, [selectedProviderId]);
+  useEffect(() => { selectedModelRef.current = selectedModel; }, [selectedModel]);
   useEffect(() => { selectedLanguageRef.current = selectedLanguage; }, [selectedLanguage]);
   useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
   
@@ -655,10 +692,12 @@ export default function JilingPage() {
     const savedProvider = localStorage.getItem("jiling_provider");
     const savedLogs = localStorage.getItem("jiling_show_logs");
     const savedLang = localStorage.getItem("jiling_selected_language");
+    const savedModel = localStorage.getItem("jiling_selected_model");
     if (savedVoice) setSelectedVoice(savedVoice);
     if (savedProvider) setSelectedProviderId(savedProvider);
     if (savedLogs === "true") setShowLogs(true);
     if (savedLang) setSelectedLanguage(savedLang);
+    if (savedModel) setSelectedModel(savedModel);
     isHydratedRef.current = true;
   }, []);
 
@@ -672,6 +711,11 @@ export default function JilingPage() {
     if (!isHydratedRef.current) return;
     localStorage.setItem("jiling_provider", selectedProviderId);
   }, [selectedProviderId]);
+
+  useEffect(() => {
+    if (!isHydratedRef.current) return;
+    localStorage.setItem("jiling_selected_model", selectedModel || "");
+  }, [selectedModel]);
 
   useEffect(() => {
     if (!isHydratedRef.current) return;
@@ -788,6 +832,7 @@ export default function JilingPage() {
           userFacingRole: "same_assistant"
         },
         userRequest: cleanText,
+        model: selectedModelRef.current || undefined,
         attachments: media ? [media] : undefined,
         conversationContext: { recentUserIntent: cleanText, locale: selectedLanguageRef.current },
         executionPolicy: { askBeforeRiskyChanges: true, preferConciseProgress: true, produceSpeakableSummary: true },
@@ -2021,10 +2066,10 @@ export default function JilingPage() {
         <AnimatePresence>
           {toast && (
             <motion.div
-              initial={{ y: -50, opacity: 0, x: "-50%" }}
-              animate={{ y: 20, opacity: 1, x: "-50%" }}
-              exit={{ y: -50, opacity: 0, x: "-50%" }}
-              className={`fixed left-1/2 top-4 z-300 flex items-center gap-3 rounded-2xl border px-6 py-3 shadow-2xl backdrop-blur-xl ${toast.type === "error"
+              initial={{ y: 50, opacity: 0, x: "-50%" }}
+              animate={{ y: -90, opacity: 1, x: "-50%" }}
+              exit={{ y: 50, opacity: 0, x: "-50%" }}
+              className={`fixed left-1/2 bottom-4 z-4000 flex items-center gap-3 rounded-2xl border px-6 py-3 shadow-2xl backdrop-blur-xl ${toast.type === "error"
                 ? "border-destructive/40 bg-destructive/10 text-destructive"
                 : "border-white/10 bg-white/5 text-white"
                 }`}
@@ -2131,6 +2176,21 @@ export default function JilingPage() {
                     </select>
                     <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-white/30" />
                   </label>
+
+                  {availableModels.length > 0 && (
+                    <label className="relative">
+                      <Cpu className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/40 z-10" />
+                      <select
+                        disabled={isBusy || isConnected}
+                        value={selectedModel || ""}
+                        onChange={(e) => handleModelChange(e.target.value)}
+                        className="h-9 min-w-[120px] appearance-none rounded-full border border-white/10 bg-white/5 pl-9 pr-8 text-xs text-white/60 outline-none backdrop-blur-xl transition hover:bg-white/10 focus:border-primary/50 disabled:opacity-50 [app-region:no-drag]"
+                      >
+                        {availableModels.map(m => <option key={m.id} value={m.id} className="bg-[#1a1a1a] font-sans">{m.name}</option>)}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-white/30" />
+                    </label>
+                  )}
 
                   <TooltipProvider>
                     <Tooltip>

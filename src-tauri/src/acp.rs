@@ -23,6 +23,7 @@ pub struct GlobalAcpManager {
     pub db: Arc<Mutex<Db>>,
     tx_map: Arc<DashMap<String, mpsc::UnboundedSender<AcpCommand>>>,
     pending_requests: Arc<DashMap<String, PendingRequest>>,
+    current_models: Arc<DashMap<String, String>>,
 }
 
 struct PendingRequest {
@@ -50,6 +51,10 @@ enum AcpCommand {
         action: String,
         data: Value,
     },
+    SwitchModel {
+        agent_id: String,
+        model: String,
+    },
 }
 
 impl GlobalAcpManager {
@@ -57,13 +62,50 @@ impl GlobalAcpManager {
         let db = Arc::new(Mutex::new(Db::new().expect("Failed to initialize DB")));
         let pending_requests = Arc::new(DashMap::new());
         let tx_map = Arc::new(DashMap::new());
+        let current_models = Arc::new(DashMap::new());
 
         GlobalAcpManager {
             app_handle,
             db,
             tx_map,
             pending_requests,
+            current_models,
         }
+    }
+
+    async fn get_or_create_tx(&self, provider_id: &str, provider_dir: &str) -> mpsc::UnboundedSender<AcpCommand> {
+        if !self.tx_map.contains_key(provider_id) {
+            let (tx, mut rx) = mpsc::unbounded_channel::<AcpCommand>();
+            let db_clone = Arc::clone(&self.db);
+            let pending_clone = Arc::clone(&self.pending_requests);
+            let app_handle_clone = self.app_handle.clone();
+            let provider_dir_clone = provider_dir.to_string();
+            let provider_id_clone = provider_id.to_string();
+
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    if let Err(e) = acp_loop(
+                        &app_handle_clone,
+                        &mut rx,
+                        Arc::clone(&db_clone),
+                        Arc::clone(&pending_clone),
+                        &provider_id_clone,
+                        &provider_dir_clone,
+                    )
+                    .await
+                    {
+                        eprintln!(
+                            "[ACP] error in acp_loop for provider {}: {}",
+                            provider_id_clone, e
+                        );
+                        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    }
+                }
+            });
+
+            self.tx_map.insert(provider_id.to_string(), tx);
+        }
+        self.tx_map.get(provider_id).unwrap().clone()
     }
 
     pub async fn execute_task(
@@ -76,58 +118,44 @@ impl GlobalAcpManager {
         attachments: Option<Vec<String>>,
         silent: bool,
     ) -> Result<String, String> {
-        let tx = {
-            if !self.tx_map.contains_key(&provider_id) {
-                let (tx, mut rx) = mpsc::unbounded_channel::<AcpCommand>();
-                let db_clone = Arc::clone(&self.db);
-                let pending_clone = Arc::clone(&self.pending_requests);
-                let app_handle_clone = self.app_handle.clone();
-                let provider_dir_clone = provider_dir.clone();
-                let provider_id_clone = provider_id.clone();
-
-                tauri::async_runtime::spawn(async move {
-                    loop {
-                        if let Err(e) = acp_loop(
-                            &app_handle_clone,
-                            &mut rx,
-                            Arc::clone(&db_clone),
-                            Arc::clone(&pending_clone),
-                            &provider_id_clone,
-                            &provider_dir_clone,
-                        )
-                        .await
-                        {
-                            eprintln!(
-                                "ACP Loop Error for {}: {}. Retrying in 5s...",
-                                provider_dir_clone, e
-                            );
-                            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-                        }
-                    }
-                });
-
-                self.tx_map.insert(provider_id.clone(), tx.clone());
-                tx
-            } else {
-                self.tx_map.get(&provider_id).unwrap().clone()
-            }
-        };
+        let tx = self.get_or_create_tx(&provider_id, &provider_dir).await;
 
         let (run_id_tx, mut run_id_rx) = mpsc::channel(1);
-        tx.send(AcpCommand::RunTask {
+        let _ = tx.send(AcpCommand::RunTask {
             agent_id,
             message,
             system_instruction,
             attachments,
             silent,
             run_id_tx,
-        })
-        .map_err(|e| e.to_string())?;
+        });
 
-        match tokio::time::timeout(tokio::time::Duration::from_secs(30), run_id_rx.recv()).await {
-            Ok(Some(result)) => result,
-            _ => Err("Failed to get runId (Timeout)".to_string()),
+        match run_id_rx.recv().await {
+            Some(res) => res,
+            None => Err("Failed to receive run_id".to_string()),
         }
+    }
+
+    pub async fn switch_model(&self, provider_id: String, provider_dir: String, agent_id: String, model: String) -> Result<(), String> {
+        // 只有当模型真正发生变化时才发送切换指令
+        let should_switch = {
+            let current = self.current_models.get(&provider_id);
+            match current {
+                Some(m) if m.as_str() == model => false,
+                _ => true,
+            }
+        };
+
+        if should_switch {
+            let tx = self.get_or_create_tx(&provider_id, &provider_dir).await;
+            let _ = tx.send(AcpCommand::SwitchModel {
+                agent_id,
+                model: model.clone(),
+            });
+            self.current_models.insert(provider_id, model);
+        }
+
+        Ok(())
     }
 
     pub async fn abort_task(&self, run_id: String) -> Result<(), String> {
@@ -265,6 +293,25 @@ async fn acp_loop(
                         let msg = json!({
                             "type": "req", "method": "agent.abort", "id": format!("abort-{}", timestamp_ns()),
                             "params": { "runId": run_id }
+                        });
+                        let _ = ws_write.send(Message::Text(msg.to_string())).await;
+                    }
+                    AcpCommand::SwitchModel { agent_id, model } => {
+                        println!("[ACP] Switching model to {} for agent {}", model, agent_id);
+                        let req_id = format!("switch-{}", timestamp_ns());
+                        let idempotency_key = format!("jiling-{}", timestamp_ns());
+                        
+                        let mut params = json!({
+                            "message": format!("/model {}", model),
+                            "agentId": agent_id,
+                            "idempotencyKey": idempotency_key,
+                        });
+                        
+                        apply_provider_request_context(provider_dir, &mut params);
+
+                        let msg = json!({
+                            "type": "req", "method": "agent", "id": req_id,
+                            "params": params
                         });
                         let _ = ws_write.send(Message::Text(msg.to_string())).await;
                     }
@@ -597,8 +644,27 @@ pub async fn execute_agent_acp_task(
     manager: tauri::State<'_, Arc<GlobalAcpManager>>,
 ) -> Result<String, String> {
     manager
-        .execute_task(provider_id, provider_dir, agent, task, system_instruction, attachments, silent)
+        .execute_task(
+            provider_id,
+            provider_dir,
+            agent,
+            task,
+            system_instruction,
+            attachments,
+            silent,
+        )
         .await
+}
+
+#[tauri::command]
+pub async fn switch_agent_model(
+    provider_id: String,
+    provider_dir: String,
+    agent: String,
+    model: String,
+    manager: tauri::State<'_, Arc<GlobalAcpManager>>,
+) -> Result<(), String> {
+    manager.switch_model(provider_id, provider_dir, agent, model).await
 }
 
 #[tauri::command]
@@ -646,6 +712,49 @@ pub async fn respond_agent_task_action(
     state
         .respond_action(agent_id, run_id, request_id, action, data)
         .await
+}
+
+#[tauri::command]
+pub async fn get_acp_models(provider_dir: String) -> Result<Vec<Value>, String> {
+    let home = std::env::var("HOME").map_err(|e| e.to_string())?;
+    let config_path = format!("{}/{}/openclaw.json", home, provider_dir);
+    
+    let content = fs::read_to_string(config_path).map_err(|e| format!("无法读取配置文件: {}", e))?;
+    let config: Value = serde_json::from_str(&content).map_err(|e| format!("解析配置文件失败: {}", e))?;
+    
+    let mut models = Vec::new();
+    
+    // 尝试从 agents.defaults.models 解析
+    if let Some(agent_models) = config["agents"]["defaults"]["models"].as_object() {
+        for (id, val) in agent_models {
+            let name = val["alias"].as_str().unwrap_or(id);
+            models.push(json!({
+                "id": id,
+                "name": name
+            }));
+        }
+    }
+    
+    // 如果没有，尝试从顶层 models 字段解析
+    if models.is_empty() {
+        if let Some(providers) = config["models"]["providers"].as_object() {
+            for (_, provider_val) in providers {
+                if let Some(provider_models) = provider_val["models"].as_array() {
+                    for m in provider_models {
+                        if let Some(id) = m["id"].as_str() {
+                            let name = m["name"].as_str().unwrap_or(id);
+                            models.push(json!({
+                                "id": id,
+                                "name": name
+                            }));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(models)
 }
 
 #[tauri::command]

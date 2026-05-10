@@ -52,6 +52,8 @@ pub fn run() {
             acp::list_agent_tasks,
             acp::respond_agent_task_action,
             acp::update_agent_task_output,
+            acp::get_acp_models,
+            acp::switch_agent_model,
             wechat::wechat_login,
             wechat::wechat_logout,
             wechat::wechat_destroy_session,

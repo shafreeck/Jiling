@@ -117,6 +117,30 @@ export class AcpProviderAdapter implements AgentProviderAdapter {
     return { status: "ok" };
   }
 
+  async listModels(): Promise<Array<{ id: string; name: string }>> {
+    try {
+      return await invoke<Array<{ id: string; name: string }>>("get_acp_models", {
+        providerDir: this.dotDir,
+      });
+    } catch (e) {
+      console.error("[AcpProvider] Error listing models:", e);
+      return [];
+    }
+  }
+
+  async switchModel(modelId: string): Promise<void> {
+    try {
+      await invoke("switch_agent_model", {
+        providerId: this.id,
+        providerDir: this.dotDir,
+        agent: "main",
+        model: modelId,
+      });
+    } catch (e) {
+      console.error("[AcpProvider] Error switching model:", e);
+    }
+  }
+
   async submitTask(task: JilingTaskEnvelope): Promise<AgentTaskRef> {
     // Currently, our ACP backend expects `agent` and `task`
     // We pass `main` as the default agent for now, or read from config
