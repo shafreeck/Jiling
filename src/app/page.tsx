@@ -834,7 +834,7 @@ export default function JilingPage() {
 
   const handleTextInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // 如果正在使用输入法组词，不触发发送
-    if (isComposingRef.current) return;
+    if (isComposingRef.current || e.nativeEvent.isComposing || e.keyCode === 229) return;
 
     if (e.key === 'Enter' || e.keyCode === 13) {
       if (!e.shiftKey) {
@@ -1909,11 +1909,29 @@ export default function JilingPage() {
                     </p>
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center py-32 text-center">
-                    <div className="h-16 w-16 rounded-3xl bg-primary/5 flex items-center justify-center mb-6 animate-pulse">
-                      <Sparkles className="h-8 w-8 text-primary/40" />
-                    </div>
-                    <p className="text-sm font-medium text-white/20 tracking-[0.2em] uppercase">正在等待任务内容输出...</p>
+                  <div className="flex flex-col items-center justify-center py-40 text-center">
+                    <motion.div 
+                      animate={{ 
+                        scale: [1, 1.1, 1],
+                        rotate: [0, 5, -5, 0]
+                      }}
+                      transition={{ 
+                        duration: 5, 
+                        repeat: Infinity,
+                        ease: "easeInOut"
+                      }}
+                      className="relative h-20 w-20 rounded-3xl bg-linear-to-br from-primary/40 to-primary/10 flex items-center justify-center mb-10 border border-white/20 shadow-[0_0_30px_rgba(var(--primary),0.3)]"
+                    >
+                      <div className="absolute inset-0 blur-2xl bg-primary/30 rounded-full animate-pulse" />
+                      <Sparkles className="h-10 w-10 text-white relative z-10 drop-shadow-[0_0_15px_rgba(255,255,255,0.8)]" />
+                    </motion.div>
+                    <motion.p 
+                      animate={{ opacity: [0.4, 1, 0.4] }}
+                      transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                      className="text-sm font-bold text-white/80 tracking-[0.4em] uppercase pl-[0.4em]"
+                    >
+                      正在等待任务内容输出...
+                    </motion.p>
                   </div>
                 )}
               </div>
@@ -2219,9 +2237,9 @@ export default function JilingPage() {
               transition={{ duration: 0.2, ease: "easeOut" }}
               className="fixed bottom-24 left-1/2 z-50 w-full max-w-lg -translate-x-1/2 p-4"
             >
-              <div className={`rounded-2xl border p-4 backdrop-blur-xl shadow-2xl transition-all duration-500 relative ${
+              <div className={`rounded-2xl border p-4 backdrop-blur-xl shadow-2xl transition-all duration-150 relative ${
                 isSubmittingText 
-                  ? "border-blue-500/40 bg-[#19191e]/95 shadow-[0_0_40px_rgba(59,130,246,0.15)] scale-[1.02]" 
+                  ? "border-blue-500/60 bg-[#19191e]/95 shadow-[0_0_30px_rgba(59,130,246,0.2)]" 
                   : "border-white/10 bg-[#19191e]/80 shadow-black/50"
               }`}>
                 <div className="absolute top-2 right-2 flex items-center gap-1">
@@ -2253,7 +2271,7 @@ export default function JilingPage() {
                   onCompositionEnd={() => { isComposingRef.current = false; }}
                   disabled={isSubmittingText}
                   placeholder={isSubmittingText ? "正在派发任务..." : "键入指令，按 Enter 直接派发给 Agent，Shift+Enter 换行..."}
-                  className={`w-full h-32 bg-transparent text-white placeholder-white/30 outline-none resize-none text-sm leading-relaxed transition-opacity duration-300 ${isSubmittingText ? "opacity-50" : "opacity-100"}`}
+                  className={`w-full h-24 bg-transparent text-white placeholder-white/30 outline-none resize-none text-sm leading-relaxed transition-opacity duration-300 ${isSubmittingText ? "opacity-50" : "opacity-100"}`}
                   autoFocus
                 />
                 
