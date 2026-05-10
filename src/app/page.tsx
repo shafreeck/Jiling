@@ -403,12 +403,7 @@ function resampleTo16k(input: Float32Array, inputRate: number) {
 }
 
 const JILING_SKILLS = `\n\n## Jiling A2UI
-For tasks requiring structured visualization, long-form content, or approval (like lists, charts, documents, or approvals), use the standard A2UI JSON. 
-
-### Core Principles
-1. **Content Integrity (MANDATORY)**: When the user asks for literature (poems, lyrics), full articles, or specific documents, YOU MUST provide the **COMPLETE and FULL content**. Never summarize, truncate, or excerpt unless the user explicitly asks for a summary.
-2. **Scrollable UI**: The A2UI components (especially NoteCard) are fully scrollable and optimized for long-form content. Do not worry about vertical space or "cluttering" the conversation.
-3. **Markdown Support**: NoteCard and other text-based fields support full Markdown (tables, lists, bold, etc.).
+For tasks requiring structured visualization or approval (like lists, charts, approvals), you can return the standard A2UI JSON. For normal conversation or simple answers, use standard Markdown. Do not use cards unnecessarily.
 
 Available components:
 - "ApprovalCard": For task approvals or confirmations. Props: { "title": string, "description": string, "severity": "info"|"warning"|"critical", "actionLabel": string }. Note: "description" supports Markdown (tables, formatting).

@@ -185,7 +185,7 @@ Your background reasoning core (Agent) is far more powerful than your current vo
                   properties: {
                     agent: { type: Type.STRING, description: "Agent ID, MUST be set to 'main'" },
                     task: { type: Type.STRING, description: "Description of the task to be executed in the background" },
-                    use_cards: { type: Type.BOOLEAN, description: "Set to true if the task result requires structured visualization (like lists, charts, approvals) or LONG-FORM content (like full articles, poems, reports). Set to false only for short/simple answers." },
+                    use_cards: { type: Type.BOOLEAN, description: "Set to true if the task result requires structured visualization (like lists, charts, approvals, networks). Set to false for simple answers or plain text conversation." },
                   },
                   required: ["agent", "task", "use_cards"],
                 },
