@@ -421,7 +421,7 @@ export default function JilingPage() {
 
   useEffect(() => {
     let unlistenFn: (() => void) | null = null;
-    
+
     const setup = async () => {
       const { listen } = await import("@tauri-apps/api/event");
       const unlisten = await listen("acp-tick", () => {
@@ -433,9 +433,9 @@ export default function JilingPage() {
       });
       unlistenFn = unlisten;
     };
-    
+
     setup();
-    
+
     return () => {
       if (unlistenFn) unlistenFn();
       if (tickTimeoutRef.current) clearTimeout(tickTimeoutRef.current);
@@ -566,9 +566,11 @@ export default function JilingPage() {
 
   const selectedVoiceRef = useRef(selectedVoice);
   const selectedProviderIdRef = useRef(selectedProviderId);
+  const selectedLanguageRef = useRef(selectedLanguage);
   const isMutedRef = useRef(isMuted);
   useEffect(() => { selectedVoiceRef.current = selectedVoice; }, [selectedVoice]);
   useEffect(() => { selectedProviderIdRef.current = selectedProviderId; }, [selectedProviderId]);
+  useEffect(() => { selectedLanguageRef.current = selectedLanguage; }, [selectedLanguage]);
   useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
 
   const statusRef = useRef<VoiceStatus>("idle");
@@ -707,8 +709,16 @@ export default function JilingPage() {
 
   const handleWechatMessage = async (params: any) => {
     const { text, requestId } = params;
-    const adapter = adapterRef.current;
-    if (!adapter) return;
+    
+    // Find the latest selected adapter from providers list
+    const currentProviderId = selectedProviderIdRef.current;
+    const provider = providers.find(p => p.id === currentProviderId);
+    const adapter = provider?.adapter || adapterRef.current;
+    
+    if (!adapter) {
+      console.error("[Wechat] No adapter found for provider:", currentProviderId);
+      return;
+    }
 
     try {
       const taskRef = await adapter.submitTask({
@@ -719,7 +729,7 @@ export default function JilingPage() {
           userFacingRole: "same_assistant"
         },
         userRequest: text,
-        conversationContext: { recentUserIntent: text, locale: selectedLanguage },
+        conversationContext: { recentUserIntent: text, locale: selectedLanguageRef.current },
         executionPolicy: { askBeforeRiskyChanges: true, preferConciseProgress: true, produceSpeakableSummary: true },
         outputContract: { format: "markdown_with_titles", requireSpeakableSummary: true, requireSpokenReport: false },
       });
@@ -727,7 +737,7 @@ export default function JilingPage() {
       upsertTask({
         runId: taskRef.runId,
         title: `[微信] ${taskTitleFromRequest(text)}`,
-        providerName: selectedProviderId || taskRef.providerId,
+        providerName: provider?.name || providerLabel(currentProviderId),
         phase: "submitted",
         startedAt: Date.now(),
         updatedAt: Date.now(),
@@ -740,20 +750,20 @@ export default function JilingPage() {
         },
         onCompleted: (e) => {
           let outputText = formatTaskOutput(e.output);
-          
+
           // Strip A2UI JSON blocks for Wechat
           outputText = outputText.replace(/```json\s*\{[\s\S]*?"type":\s*"a2ui"[\s\S]*?\}\s*```/g, '').trim();
-          
+
           if (!outputText && typeof e.output !== "string") {
             outputText = e.output.speakableSummary || e.output.title;
           }
 
           updateTask(taskRef.runId, { phase: "completed", output: outputText });
-          
+
           // Reply back to Wechat
-          invoke("wechat_respond", { 
-            requestId, 
-            payload: { text: outputText } 
+          invoke("wechat_respond", {
+            requestId,
+            payload: { text: outputText }
           });
 
           if (clientRef.current) {
@@ -764,9 +774,9 @@ export default function JilingPage() {
         },
         onFailed: (e) => {
           updateTask(taskRef.runId, { phase: "failed", error: e.error });
-          invoke("wechat_respond", { 
-            requestId, 
-            payload: { text: `抱歉，执行失败：${e.error}` } 
+          invoke("wechat_respond", {
+            requestId,
+            payload: { text: `抱歉，执行失败：${e.error}` }
           });
         }
       });
@@ -778,7 +788,7 @@ export default function JilingPage() {
   const handleTextInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // 如果正在使用输入法组词，不触发发送
     if (e.nativeEvent.isComposing) return;
-    
+
     if (e.key === 'Enter' || e.keyCode === 13) {
       if (!e.shiftKey) {
         e.preventDefault();
@@ -789,7 +799,7 @@ export default function JilingPage() {
 
   const handleSubmitText = async () => {
     if (!textInputValue.trim()) return;
-    
+
     const adapter = adapterRef.current;
     if (!adapter) {
       showToast("后台代理未就绪，请稍后再试", "error");
@@ -800,12 +810,12 @@ export default function JilingPage() {
       const taskRef = await adapter.submitTask({
         identity: {
           systemName: "机灵",
-          runtimeRoleDescription: "", 
+          runtimeRoleDescription: "",
           mode: "background_core",
           userFacingRole: "same_assistant"
         },
         userRequest: textInputValue,
-        conversationContext: { recentUserIntent: textInputValue, locale: selectedLanguage },
+        conversationContext: { recentUserIntent: textInputValue, locale: selectedLanguageRef.current },
         executionPolicy: { askBeforeRiskyChanges: true, preferConciseProgress: false, produceSpeakableSummary: true },
         outputContract: { format: "markdown_with_titles", requireSpeakableSummary: true, requireSpokenReport: true },
       });
@@ -813,7 +823,7 @@ export default function JilingPage() {
       upsertTask({
         runId: taskRef.runId,
         title: taskTitleFromRequest(textInputValue),
-        providerName: selectedProviderId || taskRef.providerId,
+        providerName: providers.find(p => p.id === selectedProviderIdRef.current)?.name || providerLabel(selectedProviderIdRef.current),
         phase: "submitted",
         startedAt: Date.now(),
         updatedAt: Date.now(),
@@ -1723,7 +1733,7 @@ Note: If you output A2UI, return ONLY the JSON without any other text.`;
         if (dismissedA2UIs.get(t.runId) === t.output) return false;
         const sections = t.output.split('\n\n___JILING_STEP_SEPARATOR___\n\n');
         const lastSection = sections[sections.length - 1].trim();
-        
+
         // Simple check for A2UI JSON structure in the LAST section only
         const hasA2UI = lastSection.includes('"type": "a2ui"') && lastSection.includes('"payload"');
         if (!hasA2UI) return false;
@@ -1795,40 +1805,40 @@ Note: If you output A2UI, return ONLY the JSON without any other text.`;
 
                 {/* Output Content */}
                 {activeTask.output ? (
-                    <div className="w-full max-w-none wrap-break-word overflow-x-hidden font-sans">
-                      <AuraRenderer
-                        content={activeTask.output}
-                        onAction={(action, data) => handleTaskA2UIAction(activeTask.runId, action, data)}
-                      />
+                  <div className="w-full max-w-none wrap-break-word overflow-x-hidden font-sans">
+                    <AuraRenderer
+                      content={activeTask.output}
+                      onAction={(action, data) => handleTaskA2UIAction(activeTask.runId, action, data)}
+                    />
+                  </div>
+                ) : (activeTask.error || activeTask.phase === "cancelled" || activeTask.phase === "lost") ? (
+                  <div className={`rounded-lg p-6 border ${activeTask.phase === "cancelled"
+                    ? "bg-orange-500/10 text-orange-400 border-orange-500/20"
+                    : activeTask.phase === "lost"
+                      ? "bg-white/5 text-white/40 border-white/10"
+                      : "bg-destructive/10 text-destructive border-destructive/20"
+                    }`}>
+                    <div className="flex items-center gap-3 font-bold mb-2">
+                      {activeTask.phase === "lost" ? <HistoryIcon className="h-5 w-5" /> : <XCircle className="h-5 w-5" />}
+                      <span>{
+                        activeTask.phase === "cancelled" ? "任务已终止" :
+                          activeTask.phase === "lost" ? "任务状态丢失" :
+                            "执行失败"
+                      }</span>
                     </div>
-                  ) : (activeTask.error || activeTask.phase === "cancelled" || activeTask.phase === "lost") ? (
-                    <div className={`rounded-lg p-6 border ${activeTask.phase === "cancelled"
-                        ? "bg-orange-500/10 text-orange-400 border-orange-500/20"
-                        : activeTask.phase === "lost"
-                          ? "bg-white/5 text-white/40 border-white/10"
-                          : "bg-destructive/10 text-destructive border-destructive/20"
-                      }`}>
-                      <div className="flex items-center gap-3 font-bold mb-2">
-                        {activeTask.phase === "lost" ? <HistoryIcon className="h-5 w-5" /> : <XCircle className="h-5 w-5" />}
-                        <span>{
-                          activeTask.phase === "cancelled" ? "任务已终止" :
-                            activeTask.phase === "lost" ? "任务状态丢失" :
-                              "执行失败"
-                        }</span>
-                      </div>
-                      <p className="opacity-90">
-                        {activeTask.phase === "lost" ? "由于 Agent 连接异常中断，该任务已无法继续追踪。" : (activeTask.error || "未知错误")}
-                      </p>
+                    <p className="opacity-90">
+                      {activeTask.phase === "lost" ? "由于 Agent 连接异常中断，该任务已无法继续追踪。" : (activeTask.error || "未知错误")}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-32 text-center">
+                    <div className="h-16 w-16 rounded-3xl bg-primary/5 flex items-center justify-center mb-6 animate-pulse">
+                      <Sparkles className="h-8 w-8 text-primary/40" />
                     </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center py-32 text-center">
-                      <div className="h-16 w-16 rounded-3xl bg-primary/5 flex items-center justify-center mb-6 animate-pulse">
-                        <Sparkles className="h-8 w-8 text-primary/40" />
-                      </div>
-                      <p className="text-sm font-medium text-white/20 tracking-[0.2em] uppercase">正在等待任务内容输出...</p>
-                    </div>
-                  )}
-                </div>
+                    <p className="text-sm font-medium text-white/20 tracking-[0.2em] uppercase">正在等待任务内容输出...</p>
+                  </div>
+                )}
+              </div>
             ) : (
               <div className="flex flex-col items-center justify-center py-32 text-center text-white/20">
                 <Clock className="mb-4 h-12 w-12 opacity-50" />
@@ -2116,7 +2126,7 @@ Note: If you output A2UI, return ONLY the JSON without any other text.`;
           </div>
         </header>
 
-          <AnimatePresence>
+        <AnimatePresence>
           {showTextInput && (
             <motion.div
               initial={{ opacity: 0, y: 20, scale: 0.95 }}
