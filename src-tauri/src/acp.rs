@@ -28,6 +28,7 @@ pub struct GlobalAcpManager {
 struct PendingRequest {
     tx: mpsc::Sender<Result<String, String>>,
     message: String,
+    silent: bool,
 }
 
 enum AcpCommand {
@@ -36,6 +37,7 @@ enum AcpCommand {
         message: String,
         system_instruction: String,
         attachments: Option<Vec<String>>,
+        silent: bool,
         run_id_tx: mpsc::Sender<Result<String, String>>,
     },
     AbortTask {
@@ -72,6 +74,7 @@ impl GlobalAcpManager {
         message: String,
         system_instruction: String,
         attachments: Option<Vec<String>>,
+        silent: bool,
     ) -> Result<String, String> {
         let tx = {
             if !self.tx_map.contains_key(&provider_id) {
@@ -116,6 +119,7 @@ impl GlobalAcpManager {
             message,
             system_instruction,
             attachments,
+            silent,
             run_id_tx,
         })
         .map_err(|e| e.to_string())?;
@@ -221,11 +225,12 @@ async fn acp_loop(
         tokio::select! {
             Some(cmd) = rx.recv(), if authenticated => {
                 match cmd {
-                    AcpCommand::RunTask { agent_id, message, system_instruction, attachments, run_id_tx } => {
+                    AcpCommand::RunTask { agent_id, message, system_instruction, attachments, silent, run_id_tx } => {
                         let req_id = format!("run-{}", timestamp_ns());
                         pending_requests.insert(req_id.clone(), PendingRequest {
                             tx: run_id_tx,
                             message: message.clone(),
+                            silent,
                         });
 
                         let idempotency_key = format!("jiling-{}", timestamp_ns());
@@ -391,7 +396,7 @@ async fn acp_loop(
                                         let _ = pending.tx.send(Err("Agent response missing runId".to_string())).await;
                                     } else {
                                         let db_lock = db.lock().await;
-                                        let _ = db_lock.insert_task(&run_id, provider_id, "main", &pending.message);
+                                        let _ = db_lock.insert_task(&run_id, provider_id, "main", &pending.message, pending.silent);
                                         let _ = pending.tx.send(Ok(run_id)).await;
                                     }
                                 } else {
@@ -588,10 +593,11 @@ pub async fn execute_agent_acp_task(
     task: String,
     system_instruction: String,
     attachments: Option<Vec<String>>,
+    silent: bool,
     manager: tauri::State<'_, Arc<GlobalAcpManager>>,
 ) -> Result<String, String> {
     manager
-        .execute_task(provider_id, provider_dir, agent, task, system_instruction, attachments)
+        .execute_task(provider_id, provider_dir, agent, task, system_instruction, attachments, silent)
         .await
 }
 

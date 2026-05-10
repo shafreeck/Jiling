@@ -69,6 +69,7 @@ export type JilingTaskEnvelope = {
     produceSpeakableSummary: boolean;
   };
   outputContract: JilingTaskOutputContract;
+  silent?: boolean;
 };
 
 export type JilingTaskOutput = {

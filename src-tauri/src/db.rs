@@ -10,6 +10,7 @@ pub struct TaskSnapshot {
     pub status: String,
     pub message: String,
     pub output: String,
+    pub silent: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -42,6 +43,7 @@ impl Db {
                 status TEXT, -- pending, submitted, running, completed, failed, cancelled, lost
                 message TEXT,
                 output TEXT,
+                silent INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )",
@@ -50,14 +52,16 @@ impl Db {
 
         // 尝试添加 provider_id 列
         let _ = conn.execute("ALTER TABLE tasks ADD COLUMN provider_id TEXT", []);
+        // 尝试添加 silent 列
+        let _ = conn.execute("ALTER TABLE tasks ADD COLUMN silent INTEGER DEFAULT 0", []);
 
         Ok(Db { conn })
     }
 
-    pub fn insert_task(&self, run_id: &str, provider_id: &str, agent_id: &str, message: &str) -> Result<()> {
+    pub fn insert_task(&self, run_id: &str, provider_id: &str, agent_id: &str, message: &str, silent: bool) -> Result<()> {
         self.conn.execute(
-            "INSERT INTO tasks (run_id, provider_id, agent_id, status, message, output) VALUES (?, ?, ?, 'submitted', ?, '')",
-            params![run_id, provider_id, agent_id, message],
+            "INSERT INTO tasks (run_id, provider_id, agent_id, status, message, output, silent) VALUES (?, ?, ?, 'submitted', ?, '', ?)",
+            params![run_id, provider_id, agent_id, message, if silent { 1 } else { 0 }],
         )?;
         Ok(())
     }
@@ -100,7 +104,7 @@ impl Db {
 
     pub fn get_task_snapshot(&self, run_id: &str) -> Result<TaskSnapshot> {
         self.conn.query_row(
-            "SELECT run_id, provider_id, agent_id, status, message, output, created_at, updated_at FROM tasks WHERE run_id = ?",
+            "SELECT run_id, provider_id, agent_id, status, message, output, created_at, updated_at, silent FROM tasks WHERE run_id = ?",
             params![run_id],
             |row| {
                 let provider_id: Option<String> = row.get(1)?;
@@ -113,6 +117,7 @@ impl Db {
                     output: row.get(5)?,
                     created_at: row.get(6)?,
                     updated_at: row.get(7)?,
+                    silent: row.get::<_, i32>(8)? != 0,
                 })
             },
         )
@@ -120,7 +125,7 @@ impl Db {
 
     pub fn get_all_tasks(&self) -> Result<Vec<TaskSnapshot>> {
         let mut stmt = self.conn.prepare(
-            "SELECT run_id, provider_id, agent_id, status, message, output, created_at, updated_at FROM tasks ORDER BY created_at DESC"
+            "SELECT run_id, provider_id, agent_id, status, message, output, created_at, updated_at, silent FROM tasks ORDER BY created_at DESC"
         )?;
         let task_iter = stmt.query_map([], |row| {
             let provider_id: Option<String> = row.get(1)?;
@@ -133,6 +138,7 @@ impl Db {
                 output: row.get(5)?,
                 created_at: row.get(6)?,
                 updated_at: row.get(7)?,
+                silent: row.get::<_, i32>(8)? != 0,
             })
         })?;
 
@@ -141,6 +147,7 @@ impl Db {
             tasks.push(task?);
         }
         Ok(tasks)
+    }
     }
 }
 
@@ -164,7 +171,7 @@ mod tests {
         let db = Db::new_with_path(&db_path).unwrap();
 
         // Test Insert
-        db.insert_task("run-1", "openclaw", "main", "Hello").unwrap();
+        db.insert_task("run-1", "openclaw", "main", "Hello", false).unwrap();
         let tasks = db.get_in_progress_tasks().unwrap();
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].0, "run-1");

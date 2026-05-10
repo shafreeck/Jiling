@@ -131,6 +131,7 @@ export class AcpProviderAdapter implements AgentProviderAdapter {
       task: task.userRequest,
       systemInstruction: systemInstruction,
       attachments: attachments.length > 0 ? attachments : null,
+      silent: task.silent || false,
     });
 
     return { runId, providerId: this.id };

@@ -577,6 +577,7 @@ export default function JilingPage() {
           updatedAt: new Date(t.updated_at).getTime(),
           progress: [], // Progress is not persisted individually for now
           output: t.output,
+          silent: t.silent,
           error: t.status === "failed" ? t.message : undefined
         }));
         setAgentTasks(mappedTasks);
@@ -773,6 +774,7 @@ export default function JilingPage() {
         conversationContext: { recentUserIntent: cleanText, locale: selectedLanguageRef.current },
         executionPolicy: { askBeforeRiskyChanges: true, preferConciseProgress: true, produceSpeakableSummary: true },
         outputContract: { format: "markdown_with_titles", requireSpeakableSummary: true, requireSpokenReport: false },
+        silent: true,
       });
 
       upsertTask({
@@ -784,7 +786,6 @@ export default function JilingPage() {
         updatedAt: Date.now(),
         progress: [],
         silent: true,
-        output: "<!-- SILENT_A2UI -->",
       });
 
       void adapter.subscribeTask(taskRef, {
@@ -865,6 +866,7 @@ export default function JilingPage() {
         conversationContext: { recentUserIntent: textInputValue, locale: selectedLanguageRef.current },
         executionPolicy: { askBeforeRiskyChanges: true, preferConciseProgress: false, produceSpeakableSummary: true },
         outputContract: { format: "markdown_with_titles", requireSpeakableSummary: true, requireSpokenReport: true },
+        silent: true,
       });
 
       upsertTask({
@@ -876,7 +878,6 @@ export default function JilingPage() {
         updatedAt: Date.now(),
         progress: [],
         silent: true,
-        output: "<!-- SILENT_A2UI -->",
       });
 
       void adapter.subscribeTask(taskRef, {
@@ -1805,7 +1806,6 @@ export default function JilingPage() {
       .sort((a, b) => b.updatedAt - a.updatedAt)
       .find(t => {
         if (t.silent) return false;
-        if (t.output && t.output.includes("<!-- SILENT_A2UI -->")) return false;
         if (t.phase !== "running" && t.phase !== "submitted" && t.phase !== "completed") return false;
         if (!t.output) return false;
         if (dismissedA2UIs.get(t.runId) === t.output) return false;
