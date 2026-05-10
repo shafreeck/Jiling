@@ -21,7 +21,7 @@ pub struct Db {
 impl Db {
     pub fn new() -> Result<Self> {
         let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        let db_dir = PathBuf::from(format!("{}/.openclaw/data", home));
+        let db_dir = PathBuf::from(format!("{}/.jiling/data", home));
         if !db_dir.exists() {
             let _ = fs::create_dir_all(&db_dir);
         }
@@ -152,7 +152,7 @@ mod tests {
     #[test]
     fn test_db_lifecycle() {
         let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        let db_path = format!("{}/.openclaw/data/jiling-tasks-test.db", home);
+        let db_path = format!("{}/.jiling/data/jiling-tasks-test.db", home);
         let db_dir = std::path::Path::new(&db_path).parent().unwrap();
         if !db_dir.exists() {
             let _ = fs::create_dir_all(db_dir);

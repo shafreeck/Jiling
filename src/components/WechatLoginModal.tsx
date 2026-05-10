@@ -83,7 +83,17 @@ export function WechatLoginModal({
                 </div>
               )}
 
-              <div className="space-y-4 w-full">
+              {status === "success" && onLogout && (
+                <Button 
+                  variant="outline" 
+                  onClick={onLogout}
+                  className="mt-4 border-white/10 bg-white/5 text-white/60 hover:bg-white/10 hover:text-white"
+                >
+                  注销当前账号
+                </Button>
+              )}
+
+              <div className="space-y-4 w-full mt-8">
                 <div className="text-xs text-white/40 leading-relaxed">
                   提示：请使用微信扫描上方二维码。登录后，你可以直接在微信中发送指令给机灵，它会自动调用本地 Agent 处理并回复。
                 </div>

@@ -455,7 +455,7 @@ export default function JilingPage() {
           if (payload.params.state === "ready") {
             setIsWechatConnected(true);
             setWechatLoginStatus("success");
-            setTimeout(() => setIsWechatModalOpen(false), 2000);
+            setTimeout(() => setIsWechatModalOpen(false), 5000);
           } else if (payload.params.state === "error") {
             setWechatError(payload.params.error);
             setWechatLoginStatus("error");
@@ -2215,6 +2215,14 @@ Note: If you output A2UI, return ONLY the JSON without any other text.`;
           qrCodeUrl={wechatQrCodeUrl}
           status={wechatLoginStatus}
           error={wechatError}
+          onLogout={() => {
+            invoke("wechat_logout");
+            setIsWechatConnected(false);
+            setWechatLoginStatus("idle");
+            setWechatQrCodeUrl(null);
+            // Don't close modal, it will show "idle" or trigger wechat_login again
+            invoke("wechat_login"); 
+          }}
         />
 
 

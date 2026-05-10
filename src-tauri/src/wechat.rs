@@ -67,7 +67,11 @@ impl WechatManager {
             return Err(format!("Wechat gateway not found at: {}", gateway_path.display()));
         }
 
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        let state_dir = format!("{}/.jiling/weixin", home);
+
         let mut child = Command::new("sh")
+            .env("OPENCLAW_STATE_DIR", state_dir)
             .args(["-c", &format!("pnpm ts-node {}", gateway_path.to_str().unwrap())])
             .current_dir(gateway_path.parent().unwrap())
             .stdin(Stdio::piped())
