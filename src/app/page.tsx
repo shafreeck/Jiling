@@ -2348,12 +2348,12 @@ export default function JilingPage() {
               transition={{ duration: 0.2, ease: "easeOut" }}
               className="fixed bottom-24 left-1/2 z-50 w-full max-w-lg -translate-x-1/2 p-4"
             >
-              <div className={`rounded-2xl border pt-4 px-4 pb-2 backdrop-blur-xl shadow-2xl transition-all duration-150 relative ${
+              <div className={`rounded-2xl border pt-6 px-4 pb-2 backdrop-blur-xl shadow-2xl transition-all duration-150 relative ${
                 isSubmittingText 
                   ? "border-blue-500/60 bg-[#19191e]/95 shadow-[0_0_30px_rgba(59,130,246,0.2)]" 
                   : "border-white/10 bg-[#19191e]/80 shadow-black/50"
               }`}>
-                <div className="absolute top-1 right-2 flex items-center gap-1">
+                <div className="absolute top-0 right-2 flex items-center gap-1">
                   <Button
                     variant="ghost"
                     size="icon"
