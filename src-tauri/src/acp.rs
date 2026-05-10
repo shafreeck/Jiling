@@ -130,9 +130,11 @@ impl GlobalAcpManager {
             run_id_tx,
         });
 
-        match run_id_rx.recv().await {
-            Some(res) => res,
-            None => Err("Failed to receive run_id".to_string()),
+        let res = tokio::time::timeout(std::time::Duration::from_secs(30), run_id_rx.recv()).await;
+        match res {
+            Ok(Some(res)) => res,
+            Ok(None) => Err("Failed to receive run_id: channel closed".to_string()),
+            Err(_) => Err("Timed out waiting for run_id from ACP loop".to_string()),
         }
     }
 
@@ -251,9 +253,15 @@ async fn acp_loop(
 
     loop {
         tokio::select! {
-            Some(cmd) = rx.recv(), if authenticated => {
-                match cmd {
-                    AcpCommand::RunTask { agent_id, message, system_instruction, attachments, silent, run_id_tx } => {
+        Some(cmd) = rx.recv() => {
+            if !authenticated {
+                if let AcpCommand::RunTask { run_id_tx, .. } = cmd {
+                    let _ = run_id_tx.send(Err("ACP connection not authenticated yet".to_string())).await;
+                }
+                continue;
+            }
+            match cmd {
+                AcpCommand::RunTask { agent_id, message, system_instruction, attachments, silent, run_id_tx } => {
                         let req_id = format!("run-{}", timestamp_ns());
                         pending_requests.insert(req_id.clone(), PendingRequest {
                             tx: run_id_tx,
@@ -384,12 +392,12 @@ async fn acp_loop(
                         app_handle.emit("acp-tick", ()).unwrap_or(());
                         continue;
                     }
-
-                        let original_run_id = payload["runId"].as_str().map(|s| s.to_string())
-                            .or_else(|| payload["runId"].as_u64().map(|n| n.to_string()))
-                            .or_else(|| payload["run_id"].as_str().map(|s| s.to_string()))
-                            .or_else(|| payload["run_id"].as_u64().map(|n| n.to_string()))
-                            .unwrap_or_default();
+                    if v["event"] == "agent" {
+                        let payload = &v["payload"];
+                        let original_run_id = payload["runId"].as_str()
+                            .or(payload["run_id"].as_str())
+                            .unwrap_or("")
+                            .to_string();
                         let mut mapped_run_id = original_run_id.clone();
 
                         // Map the dynamically generated AutoClaw runId back to the original task
@@ -398,7 +406,7 @@ async fn acp_loop(
                         }
 
                         let stream = payload["stream"].as_str()
-                            .or(v["event"].as_str()) // Some implementations use v["event"]
+                            .or(v["event"].as_str())
                             .unwrap_or("");
 
                         let db_lock = db.lock().await;
@@ -428,12 +436,6 @@ async fn acp_loop(
                                 data["phase"] = json!(phase);
                             }
                             
-                            if phase == "error" && data["error"].as_str().unwrap_or("").is_empty() {
-                                if let Some(message) = extract_error_message(payload) {
-                                    data["error"] = json!(message);
-                                }
-                            }
-
                             let _ = db_lock.update_task_status(&mapped_run_id, phase);
                             app_handle.emit("acp-event", AcpEvent {
                                 run_id: mapped_run_id.clone(),
@@ -448,17 +450,16 @@ async fn acp_loop(
                         if res_id.starts_with("run-") {
                             if let Some((_, pending)) = pending_requests.remove(res_id) {
                                 if v["ok"] == true {
-                                    let run_id = v["payload"]["runId"].as_str().map(|s| s.to_string())
-                                        .or_else(|| v["payload"]["runId"].as_u64().map(|n| n.to_string()))
-                                        .or_else(|| v["payload"]["run_id"].as_str().map(|s| s.to_string()))
-                                        .or_else(|| v["payload"]["run_id"].as_u64().map(|n| n.to_string()))
-                                        .unwrap_or_default();
+                                    let run_id = v["payload"]["runId"].as_str()
+                                        .or(v["payload"]["run_id"].as_str())
+                                        .unwrap_or("")
+                                        .to_string();
                                     if run_id.is_empty() {
                                         let _ = pending.tx.send(Err("Agent response missing runId".to_string())).await;
                                     } else {
                                         let db_lock = db.lock().await;
                                         let _ = db_lock.insert_task(&run_id, provider_id, "main", &pending.message, pending.silent);
-                                        let _ = pending.tx.send(Ok(run_id)).await;
+                                        let _ = pending.tx.send(Ok(run_id.clone())).await;
                                     }
                                 } else {
                                     let message = extract_error_message(&v)
@@ -503,6 +504,8 @@ async fn acp_loop(
             }
         }
     }
+
+    Ok(())
 }
 
 fn apply_provider_request_context(provider_dir: &str, params: &mut Value) {
