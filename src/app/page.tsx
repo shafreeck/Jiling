@@ -819,7 +819,10 @@ export default function JilingPage() {
 
     if (!adapter) {
       console.error("[Wechat] No adapter found for provider:", targetProviderId);
-      // If we are still probing, maybe we should wait?
+      invoke("wechat_respond", {
+        requestId,
+        payload: { text: "抱歉，微信服务尚未准备就绪，请稍后再试。" }
+      });
       return;
     }
 
@@ -892,6 +895,10 @@ export default function JilingPage() {
       });
     } catch (error) {
       console.error("Failed to handle wechat message:", error);
+      invoke("wechat_respond", {
+        requestId,
+        payload: { text: `抱歉，系统处理出错：${error instanceof Error ? error.message : String(error)}` }
+      });
     }
   };
 

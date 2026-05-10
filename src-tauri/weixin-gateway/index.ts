@@ -23,15 +23,24 @@ let bot: any = null;
 const jilingAgent: Agent = {
   async chat(req: ChatRequest): Promise<ChatResponse> {
     const requestId = `req-${Date.now()}`;
+    log(`Received chat request: ${requestId}, text: ${req.text}`);
     sendEvent("message_received", { ...req, requestId });
 
     // We wait for the main app to provide a response via stdin
     return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        rl.off("line", handler);
+        log(`Chat request ${requestId} timed out after 60s`);
+        resolve({ text: "抱歉，任务处理超时，请稍后再试。" });
+      }, 60000);
+
       const handler = (line: string) => {
         try {
           const msg = JSON.parse(line);
           if (msg.type === "response" && msg.requestId === requestId) {
+            clearTimeout(timeout);
             rl.off("line", handler);
+            log(`Sending response for ${requestId}`);
             resolve(msg.payload);
           }
         } catch (e) {

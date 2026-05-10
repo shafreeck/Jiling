@@ -153,6 +153,7 @@ export class AcpProviderAdapter implements AgentProviderAdapter {
       providerDir: this.dotDir,
       agent: "main",
       task: task.userRequest,
+      model: task.model || null,
       systemInstruction: systemInstruction,
       attachments: attachments.length > 0 ? attachments : null,
       silent: task.silent || false,
