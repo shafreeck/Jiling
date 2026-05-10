@@ -1853,11 +1853,6 @@ export default function JilingPage() {
     };
   }, []);
 
-  const statusText =
-    status === "idle" ? "准备就绪" :
-      status === "listening" ? "正在倾听" :
-        status === "thinking" ? "正在执行" :
-          "正在回答";
 
   const runningTasks = agentTasks.filter((task) => task.phase === "submitted" || task.phase === "running");
 
@@ -2047,10 +2042,10 @@ export default function JilingPage() {
               animate={{
                 opacity: status === "speaking" ? 0.3 + (volume * 0.7) : 0.2,
                 boxShadow: status === "thinking"
-                  ? "inset 0 0 80px rgba(168, 85, 247, 0.4)"
+                  ? "inset 0 0 80px rgba(168, 85, 247, 0.5)"
                   : status === "listening"
-                    ? "inset 0 0 60px rgba(72, 255, 222, 0.3)"
-                    : `inset 0 0 ${60 + (volume * 100)}px rgba(16, 185, 129, 0.5)`,
+                    ? "inset 0 0 60px rgba(0, 230, 255, 0.4)"
+                    : `inset 0 0 ${60 + (volume * 100)}px rgba(0, 210, 255, 0.6)`,
               }}
               exit={{ opacity: 0 }}
               transition={{
@@ -2219,7 +2214,7 @@ export default function JilingPage() {
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400/50 opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
                   </span>
-                  LIVE • {statusText}
+                  LIVE
                 </div>
               )}
             </div>
