@@ -251,7 +251,11 @@ async fn acp_loop(
 
     loop {
         tokio::select! {
-            Some(cmd) = rx.recv(), if authenticated => {
+            res = rx.recv(), if authenticated => {
+                let cmd = match res {
+                    Some(c) => c,
+                    None => break,
+                };
                 match cmd {
                     AcpCommand::RunTask { agent_id, message, system_instruction, attachments, silent, run_id_tx } => {
                         let req_id = format!("run-{}", timestamp_ns());
@@ -354,7 +358,11 @@ async fn acp_loop(
                     }
                 }
             }
-            Some(Ok(msg)) = ws_read.next() => {
+            res = ws_read.next() => {
+                let msg = match res {
+                    Some(Ok(m)) => m,
+                    _ => break,
+                };
                 if let Message::Text(text) = msg {
                     let v: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
 
