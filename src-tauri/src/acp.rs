@@ -36,7 +36,6 @@ enum AcpCommand {
     RunTask {
         agent_id: String,
         message: String,
-        model: Option<String>,
         system_instruction: String,
         attachments: Option<Vec<String>>,
         silent: bool,
@@ -115,7 +114,6 @@ impl GlobalAcpManager {
         provider_dir: String,
         agent_id: String,
         message: String,
-        model: Option<String>,
         system_instruction: String,
         attachments: Option<Vec<String>>,
         silent: bool,
@@ -126,7 +124,6 @@ impl GlobalAcpManager {
         let _ = tx.send(AcpCommand::RunTask {
             agent_id,
             message,
-            model,
             system_instruction,
             attachments,
             silent,
@@ -256,7 +253,7 @@ async fn acp_loop(
         tokio::select! {
             Some(cmd) = rx.recv(), if authenticated => {
                 match cmd {
-                    AcpCommand::RunTask { agent_id, message, model, system_instruction, attachments, silent, run_id_tx } => {
+                    AcpCommand::RunTask { agent_id, message, system_instruction, attachments, silent, run_id_tx } => {
                         let req_id = format!("run-{}", timestamp_ns());
                         pending_requests.insert(req_id.clone(), PendingRequest {
                             tx: run_id_tx,
@@ -266,18 +263,11 @@ async fn acp_loop(
 
                         let idempotency_key = format!("jiling-{}", timestamp_ns());
 
-                        // Inject model command if provided
-                        let message_with_model = if let Some(m) = model {
-                            format!("/model {}\n{}", m, message)
-                        } else {
-                            message
-                        };
-
                         // Combine message and system_instruction into a single message field for compatibility
                         let final_message = if !system_instruction.is_empty() {
-                            format!("{}\n\n{}", system_instruction, message_with_model)
+                            format!("{}\n\n{}", system_instruction, message)
                         } else {
-                            message_with_model
+                            message
                         };
 
                         let mut params = json!({
@@ -648,7 +638,6 @@ pub async fn execute_agent_acp_task(
     provider_dir: String,
     agent: String,
     task: String,
-    model: Option<String>,
     system_instruction: String,
     attachments: Option<Vec<String>>,
     silent: bool,
@@ -660,7 +649,6 @@ pub async fn execute_agent_acp_task(
             provider_dir,
             agent,
             task,
-            model,
             system_instruction,
             attachments,
             silent,
