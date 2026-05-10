@@ -216,6 +216,18 @@ impl GlobalAcpManager {
 
 fn get_active_port(provider_dir: &str) -> u16 {
     let home = std::env::var("HOME").unwrap_or_default();
+    
+    // 优先尝试从 node.json 读取
+    let node_path = format!("{}/{}/node.json", home, provider_dir);
+    if let Ok(content) = fs::read_to_string(node_path) {
+        if let Ok(json) = serde_json::from_str::<Value>(&content) {
+            if let Some(port) = json["gateway"]["port"].as_u64() {
+                return port as u16;
+            }
+        }
+    }
+
+    // 兜底：从原来的 openclaw.json 读取
     let config_path = format!("{}/{}/openclaw.json", home, provider_dir);
     if let Ok(content) = fs::read_to_string(config_path) {
         if let Ok(json) = serde_json::from_str::<Value>(&content) {
@@ -254,7 +266,7 @@ async fn acp_loop(
             res = rx.recv(), if authenticated => {
                 let cmd = match res {
                     Some(c) => c,
-                    None => break,
+                    None => break Ok(()),
                 };
                 match cmd {
                     AcpCommand::RunTask { agent_id, message, system_instruction, attachments, silent, run_id_tx } => {
@@ -361,7 +373,7 @@ async fn acp_loop(
             res = ws_read.next() => {
                 let msg = match res {
                     Some(Ok(m)) => m,
-                    _ => break,
+                    _ => break Ok(()),
                 };
                 if let Message::Text(text) = msg {
                     let v: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
@@ -496,8 +508,6 @@ async fn acp_loop(
             }
         }
     }
-
-    Ok(())
 }
 
 fn apply_provider_request_context(provider_dir: &str, params: &mut Value) {
@@ -731,29 +741,35 @@ pub async fn get_acp_models(provider_dir: String) -> Result<Vec<Value>, String> 
     let content = fs::read_to_string(config_path).map_err(|e| format!("无法读取配置文件: {}", e))?;
     let config: Value = serde_json::from_str(&content).map_err(|e| format!("解析配置文件失败: {}", e))?;
     
-    let mut models = Vec::new();
-    
-    // 尝试从 agents.defaults.models 解析
+    let mut models: Vec<Value> = Vec::new();
+    let mut seen_ids = std::collections::HashSet::new();
+
+    // 1. 从 agents.defaults.models 解析
     if let Some(agent_models) = config["agents"]["defaults"]["models"].as_object() {
         for (id, val) in agent_models {
-            let name = val["alias"].as_str().unwrap_or(id);
-            models.push(json!({
-                "id": id,
-                "name": name
-            }));
+            let name = val["alias"].as_str().unwrap_or_else(|| {
+                id.split('/').last().unwrap_or(id)
+            });
+            if seen_ids.insert(id.clone()) {
+                models.push(json!({
+                    "id": id,
+                    "name": name
+                }));
+            }
         }
     }
     
-    // 如果没有，尝试从顶层 models 字段解析
-    if models.is_empty() {
-        if let Some(providers) = config["models"]["providers"].as_object() {
-            for (_, provider_val) in providers {
-                if let Some(provider_models) = provider_val["models"].as_array() {
-                    for m in provider_models {
-                        if let Some(id) = m["id"].as_str() {
-                            let name = m["name"].as_str().unwrap_or(id);
+    // 2. 同时也从 models.providers 字段解析，确保不漏掉任何模型
+    if let Some(providers) = config["models"]["providers"].as_object() {
+        for (provider_id, provider_val) in providers {
+            if let Some(provider_models) = provider_val["models"].as_array() {
+                for m in provider_models {
+                    if let Some(m_id) = m["id"].as_str() {
+                        let full_id = format!("{}/{}", provider_id, m_id);
+                        if seen_ids.insert(full_id.clone()) {
+                            let name = m["name"].as_str().unwrap_or(m_id);
                             models.push(json!({
-                                "id": id,
+                                "id": full_id,
                                 "name": name
                             }));
                         }
