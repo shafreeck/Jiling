@@ -2117,9 +2117,9 @@ export default function JilingPage() {
           </div>
         </div>
 
-        <header data-tauri-drag-region className="relative flex items-center justify-between px-8 pt-10 pb-6 select-none" style={{ zIndex: 600 }}>
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2">
+        <header data-tauri-drag-region className="relative flex items-center justify-between px-4 pt-10 pb-6 select-none" style={{ zIndex: 600 }}>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5">
               <label className="relative">
                 <Sparkles className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/40" />
                 <select
