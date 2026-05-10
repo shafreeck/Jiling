@@ -144,6 +144,7 @@ export function ControlBar({
                 variant="ghost"
                 size="icon"
                 onClick={onToggleTextInput}
+                data-keyboard-toggle="true"
                 className={`h-12 w-12 rounded-full transition-all ${
                   showTextInput ? "bg-white/20 text-white" : "hover:bg-white/10 text-white/60"
                 }`}

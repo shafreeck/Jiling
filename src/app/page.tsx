@@ -430,6 +430,7 @@ export default function JilingPage() {
   const [isSubmittingText, setIsSubmittingText] = useState(false);
   const isComposingRef = useRef(false);
   const [isTextInputPinned, setIsTextInputPinned] = useState(false);
+  const textInputRef = useRef<HTMLDivElement>(null);
   const [showLogs, setShowLogs] = useState(false);
   const [isOnline, setIsOnline] = useState(false);
   const [isWechatConnected, setIsWechatConnected] = useState(false);
@@ -596,6 +597,23 @@ export default function JilingPage() {
   useEffect(() => { selectedProviderIdRef.current = selectedProviderId; }, [selectedProviderId]);
   useEffect(() => { selectedLanguageRef.current = selectedLanguage; }, [selectedLanguage]);
   useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
+  
+  // Auto-hide text input when clicking away (if not pinned)
+  useEffect(() => {
+    const handleClickAway = (e: MouseEvent) => {
+      if (showTextInput && !isTextInputPinned && textInputRef.current && !textInputRef.current.contains(e.target as Node)) {
+        // Check if the click was on the keyboard toggle button in the control bar to avoid immediate closing when opening
+        const controlBarKeyboardBtn = document.querySelector('[data-keyboard-toggle="true"]');
+        if (controlBarKeyboardBtn && controlBarKeyboardBtn.contains(e.target as Node)) {
+          return;
+        }
+        setShowTextInput(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickAway);
+    return () => document.removeEventListener("mousedown", handleClickAway);
+  }, [showTextInput, isTextInputPinned]);
 
   const statusRef = useRef<VoiceStatus>("idle");
   const reconnectWantedRef = useRef(false);
@@ -2231,6 +2249,7 @@ export default function JilingPage() {
         <AnimatePresence>
           {showTextInput && (
             <motion.div
+              ref={textInputRef}
               initial={{ opacity: 0, y: 20, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 20, scale: 0.95 }}
