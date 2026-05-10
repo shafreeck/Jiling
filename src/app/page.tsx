@@ -297,7 +297,10 @@ class AudioStreamer {
     return this.sources.size > 0;
   }
 
-  addPcm16(base64: string) {
+  async addPcm16(base64: string) {
+    if (this.context.state === "suspended") {
+      await this.context.resume();
+    }
     const raw = atob(base64);
     const bytes = new Uint8Array(raw.length);
     for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
@@ -341,7 +344,10 @@ class AudioStreamer {
   }
 }
 
-function playReadySound(context: AudioContext) {
+async function playReadySound(context: AudioContext) {
+  if (context.state === "suspended") {
+    await context.resume();
+  }
   const osc = context.createOscillator();
   const gain = context.createGain();
 
@@ -1377,6 +1383,7 @@ export default function JilingPage() {
       serverReconnectRef.current = false;
       await cleanupAudio();
       const context = new AudioContext({ sampleRate: 24000 });
+      if (context.state === "suspended") await context.resume();
       audioContextRef.current = context;
 
       const streamer = new AudioStreamer(context);
@@ -1485,7 +1492,7 @@ export default function JilingPage() {
     }, "");
   };
 
-  const handleLiveMessage = (message: LiveMessage) => {
+  const handleLiveMessage = async (message: LiveMessage) => {
     if (message.goAway) {
       scheduleServerReconnect(message.goAway.timeLeft);
     }
@@ -1502,7 +1509,7 @@ export default function JilingPage() {
       for (const part of parts) {
         if (part.inlineData?.data) {
           setStatus("speaking");
-          streamerRef.current?.addPcm16(part.inlineData.data);
+          await streamerRef.current?.addPcm16(part.inlineData.data);
         }
       }
 
@@ -1564,7 +1571,7 @@ export default function JilingPage() {
     if (message.setupComplete) {
       addLog("[Live] 会话就绪");
       if (audioContextRef.current) {
-        playReadySound(audioContextRef.current);
+        await playReadySound(audioContextRef.current);
       }
     }
 
