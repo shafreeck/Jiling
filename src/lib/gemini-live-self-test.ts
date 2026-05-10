@@ -233,11 +233,11 @@ async function runProductionClientSelfTest(rememberPcm: Uint8Array, askPcm: Uint
   };
 
   const makeClient = (label: string) => {
-    const client = new GeminiLiveClient({
-      onLog: (message) => log(`[生产自检:${label}] ${message}`),
-      onError: (error) => log(`[生产自检:${label}] error ${errorMessage(error)}`),
+    const client = new GeminiLiveClient(undefined, {
+      onLog: (message: string) => log(`[生产自检:${label}] ${message}`),
+      onError: (error: unknown) => log(`[生产自检:${label}] error ${errorMessage(error)}`),
       onClose: () => log(`[生产自检:${label}] closed`),
-      onMessage: (message) => {
+      onMessage: (message: LiveMessage) => {
         const inputText = message.serverContent?.inputTranscription?.text;
         if (inputText) log(`[生产自检:${label}] 输入转写: ${inputText}`);
         const outputText = message.serverContent?.outputTranscription?.text;

@@ -148,7 +148,6 @@ impl Db {
         }
         Ok(tasks)
     }
-    }
 }
 
 #[cfg(test)]
