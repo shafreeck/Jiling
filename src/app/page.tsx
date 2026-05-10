@@ -2237,7 +2237,7 @@ export default function JilingPage() {
               transition={{ duration: 0.2, ease: "easeOut" }}
               className="fixed bottom-24 left-1/2 z-50 w-full max-w-lg -translate-x-1/2 p-4"
             >
-              <div className={`rounded-2xl border p-4 backdrop-blur-xl shadow-2xl transition-all duration-150 relative ${
+              <div className={`rounded-2xl border pt-4 px-4 pb-2 backdrop-blur-xl shadow-2xl transition-all duration-150 relative ${
                 isSubmittingText 
                   ? "border-blue-500/60 bg-[#19191e]/95 shadow-[0_0_30px_rgba(59,130,246,0.2)]" 
                   : "border-white/10 bg-[#19191e]/80 shadow-black/50"
@@ -2286,9 +2286,9 @@ export default function JilingPage() {
                   </div>
                 )}
 
-                <div className="mt-2 flex justify-between items-center text-xs text-white/40">
-                  <span>{isSubmittingText ? "任务处理中..." : "支持 Shift + Enter 换行"}</span>
-                  <span>{isSubmittingText ? <Loader2 className="h-3 w-3 animate-spin" /> : "按 Enter 发送"}</span>
+                <div className="mt-1.5 flex justify-between items-center text-[10px] text-white/30 uppercase tracking-widest">
+                  <span>{isSubmittingText ? "任务处理中..." : "Shift+↵ 换行"}</span>
+                  <span>{isSubmittingText ? <Loader2 className="h-3 w-3 animate-spin" /> : "↵ 发送"}</span>
                 </div>
               </div>
             </motion.div>
