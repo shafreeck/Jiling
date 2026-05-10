@@ -2353,7 +2353,7 @@ export default function JilingPage() {
                   ? "border-blue-500/60 bg-[#19191e]/95 shadow-[0_0_30px_rgba(59,130,246,0.2)]" 
                   : "border-white/10 bg-[#19191e]/80 shadow-black/50"
               }`}>
-                <div className="absolute top-2 right-2 flex items-center gap-1">
+                <div className="absolute top-1.5 right-2 flex items-center gap-1">
                   <Button
                     variant="ghost"
                     size="icon"
@@ -2382,7 +2382,7 @@ export default function JilingPage() {
                   onCompositionEnd={() => { isComposingRef.current = false; }}
                   disabled={isSubmittingText}
                   placeholder={isSubmittingText ? "正在派发任务..." : "键入指令，按 Enter 直接派发给 Agent，Shift+Enter 换行..."}
-                  className={`w-full h-24 bg-transparent text-white placeholder-white/30 outline-none resize-none text-sm leading-relaxed transition-opacity duration-300 ${isSubmittingText ? "opacity-50" : "opacity-100"}`}
+                  className={`w-full h-24 bg-transparent text-white placeholder-white/30 outline-none resize-none text-sm leading-relaxed pr-16 transition-opacity duration-300 ${isSubmittingText ? "opacity-50" : "opacity-100"}`}
                   autoFocus
                 />
                 
