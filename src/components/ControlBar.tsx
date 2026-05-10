@@ -7,8 +7,7 @@ import {
   Video, 
   VideoOff, 
   MonitorUp, 
-  MessageSquare, 
-  MessageSquareOff,
+  Captions, 
   LogOut,
   AudioLines,
   X,
@@ -131,7 +130,7 @@ export function ControlBar({
                   showTranscript ? "bg-white/20 text-white" : "hover:bg-white/10 text-white/60"
                 }`}
               >
-                {showTranscript ? <MessageSquare className="h-5 w-5" /> : <MessageSquareOff className="h-5 w-5" />}
+                <Captions className="h-5 w-5" />
               </Button>
             }
           />

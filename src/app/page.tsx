@@ -18,6 +18,7 @@ import {
   Minimize2,
   PanelRight,
   Radio,
+  Loader2,
   RotateCw,
   Sparkles,
   Terminal,
@@ -77,6 +78,7 @@ type AgentTaskView = {
   progress: string[];
   output?: string;
   error?: string;
+  silent?: boolean;
 };
 
 export type AudioFeatures = {
@@ -393,6 +395,20 @@ function resampleTo16k(input: Float32Array, inputRate: number) {
   return output;
 }
 
+const JILING_SKILLS = `\n\n## Jiling A2UI
+For tasks requiring structured visualization or approval (like lists, charts, approvals), you can return the standard A2UI JSON. For normal conversation or simple answers, use standard Markdown. Do not use cards unnecessarily.
+
+Available components:
+- "ApprovalCard": For task approvals or confirmations. Props: { "title": string, "description": string, "severity": "info"|"warning"|"critical", "actionLabel": string }. Note: "description" supports Markdown (tables, formatting).
+- "CodeReviewCard": For code reviews. Props: { "files": Array<{ "filename": string, "content": string, "language": string }> }
+- "NoteCard": For displaying markdown notes or summaries. Props: { "content": string }
+- "ChartCard": For displaying charts. Props: { "title": string, "type": "line"|"bar", "data": Array<{ "label": string, "value": number }>, "color"?: string }
+- "TaskListCard": For displaying lists of tasks. Props: { "title": string, "tasks": Array<{ "id": string, "title": string, "completed": boolean, "description"?: string, "cancelled"?: boolean }> }
+- "CanvasCard": For displaying topology graphs (mind maps, task flows). Props: { "nodes": Array<{ "id": string, "label": string, "color": "red"|"green"|"blue"|"yellow"|"orange", "size"?: "small"|"medium"|"large" }>, "links": Array<{ "source": string, "target": string, "label"?: string }> }
+
+Output format: { "type": "a2ui", "requestId": "unique_id", "summary": "A human-readable summary of the card (for logs and voice fallback)", "payload": { "component": "ComponentName", "props": {...} } }
+Note: If you output A2UI, return ONLY the JSON without any other text.`;
+
 export default function JilingPage() {
   const [status, setStatusState] = useState<VoiceStatus>("idle");
   const [isConnected, setIsConnected] = useState(false);
@@ -411,6 +427,7 @@ export default function JilingPage() {
   const [enableA2UI, setEnableA2UI] = useState(true);
   const [showTextInput, setShowTextInput] = useState(false);
   const [textInputValue, setTextInputValue] = useState("");
+  const [isSubmittingText, setIsSubmittingText] = useState(false);
   const isComposingRef = useRef(false);
   const [isTextInputPinned, setIsTextInputPinned] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
@@ -715,7 +732,7 @@ export default function JilingPage() {
 
   const handleWechatMessage = async (params: any) => {
     const { text, media, requestId } = params;
-    
+
     let targetProviderId = selectedProviderIdRef.current;
     let cleanText = text;
 
@@ -733,10 +750,10 @@ export default function JilingPage() {
     // Find the adapter for the target provider
     console.log("[Wechat] Attempting to route to:", targetProviderId);
     console.log("[Wechat] Available providers:", providersRef.current.map(p => p.id));
-    
+
     const provider = providersRef.current.find(p => p.id === targetProviderId);
     const adapter = provider?.adapter;
-    
+
     if (!adapter) {
       console.error("[Wechat] No adapter found for provider:", targetProviderId);
       // If we are still probing, maybe we should wait?
@@ -766,6 +783,8 @@ export default function JilingPage() {
         startedAt: Date.now(),
         updatedAt: Date.now(),
         progress: [],
+        silent: true,
+        output: "<!-- SILENT_A2UI -->",
       });
 
       void adapter.subscribeTask(taskRef, {
@@ -825,7 +844,8 @@ export default function JilingPage() {
   };
 
   const handleSubmitText = async () => {
-    if (!textInputValue.trim()) return;
+    if (!textInputValue.trim() || isSubmittingText) return;
+    setIsSubmittingText(true);
 
     const adapter = adapterRef.current;
     if (!adapter) {
@@ -837,7 +857,7 @@ export default function JilingPage() {
       const taskRef = await adapter.submitTask({
         identity: {
           systemName: "机灵",
-          runtimeRoleDescription: "",
+          runtimeRoleDescription: enableA2UI ? JILING_SKILLS : "",
           mode: "background_core",
           userFacingRole: "same_assistant"
         },
@@ -855,6 +875,8 @@ export default function JilingPage() {
         startedAt: Date.now(),
         updatedAt: Date.now(),
         progress: [],
+        silent: true,
+        output: "<!-- SILENT_A2UI -->",
       });
 
       void adapter.subscribeTask(taskRef, {
@@ -894,6 +916,8 @@ export default function JilingPage() {
     } catch (error) {
       console.error("Failed to submit text task:", error);
       showToast("提交任务失败", "error");
+    } finally {
+      setIsSubmittingText(false);
     }
   };
 
@@ -1075,7 +1099,7 @@ export default function JilingPage() {
     setAgentTasks((prev) =>
       prev.map((t) => {
         if (t.runId !== runId) return t;
-        
+
         let newOutput = t.output || "";
         // 如果新到的文本包含了已有的内容（说明是快照模式），则直接替换
         if (text.length > newOutput.length && text.startsWith(newOutput)) {
@@ -1084,7 +1108,7 @@ export default function JilingPage() {
           // 否则按增量拼接
           newOutput += text;
         }
-        
+
         return { ...t, output: newOutput, updatedAt: Date.now() };
       })
     );
@@ -1481,25 +1505,11 @@ export default function JilingPage() {
           const adapter = adapterRef.current;
           const selectedProvider = providersRef.current.find((provider) => provider.id === selectedProviderIdRef.current);
           const taskText = String(callArgs.task || "");
-          const jilingSkills = `\n\n## Jiling A2UI
-For tasks requiring structured visualization or approval (like lists, charts, approvals), you can return the standard A2UI JSON. For normal conversation or simple answers, use standard Markdown. Do not use cards unnecessarily.
-
-Available components:
-- "ApprovalCard": For task approvals or confirmations. Props: { "title": string, "description": string, "severity": "info"|"warning"|"critical", "actionLabel": string }. Note: "description" supports Markdown (tables, formatting).
-- "CodeReviewCard": For code reviews. Props: { "files": Array<{ "filename": string, "content": string, "language": string }> }
-- "NoteCard": For displaying markdown notes or summaries. Props: { "content": string }
-- "ChartCard": For displaying charts. Props: { "title": string, "type": "line"|"bar", "data": Array<{ "label": string, "value": number }>, "color"?: string }
-- "TaskListCard": For displaying lists of tasks. Props: { "title": string, "tasks": Array<{ "id": string, "title": string, "completed": boolean, "description"?: string, "cancelled"?: boolean }> }
-- "CanvasCard": For displaying topology graphs (mind maps, task flows). Props: { "nodes": Array<{ "id": string, "label": string, "color": "red"|"green"|"blue"|"yellow"|"orange", "size"?: "small"|"medium"|"large" }>, "links": Array<{ "source": string, "target": string, "label"?: string }> }
-
-Output format: { "type": "a2ui", "requestId": "unique_id", "summary": "A human-readable summary of the card (for logs and voice fallback)", "payload": { "component": "ComponentName", "props": {...} } }
-Note: If you output A2UI, return ONLY the JSON without any other text.`;
-
           const useCards = Boolean(callArgs.use_cards) && enableA2UI;
           const taskRef = await adapter.submitTask({
             identity: {
               systemName: "机灵",
-              runtimeRoleDescription: useCards ? jilingSkills : "",
+              runtimeRoleDescription: useCards ? JILING_SKILLS : "",
               mode: "background_core",
               userFacingRole: "same_assistant"
             },
@@ -1794,6 +1804,8 @@ Note: If you output A2UI, return ONLY the JSON without any other text.`;
     const a2uiTask = [...agentTasks]
       .sort((a, b) => b.updatedAt - a.updatedAt)
       .find(t => {
+        if (t.silent) return false;
+        if (t.output && t.output.includes("<!-- SILENT_A2UI -->")) return false;
         if (t.phase !== "running" && t.phase !== "submitted" && t.phase !== "completed") return false;
         if (!t.output) return false;
         if (dismissedA2UIs.get(t.runId) === t.output) return false;
@@ -2180,7 +2192,7 @@ Note: If you output A2UI, return ONLY the JSON without any other text.`;
               className={`h-10 w-10 rounded-full border backdrop-blur-md transition-all duration-300 [app-region:no-drag] ${isWechatConnected
                 ? "bg-green-500/20 text-green-500 border-green-500/20 shadow-[0_0_15px_rgba(34,197,94,0.1)]"
                 : "bg-white/5 text-white/60 border-white/10 hover:bg-white/10 hover:text-white"
-              }`}
+                }`}
               title={isWechatConnected ? "断开微信" : "连接微信"}
             >
               <MessageCircle className="h-5 w-5" />
@@ -2195,18 +2207,6 @@ Note: If you output A2UI, return ONLY the JSON without any other text.`;
               <KeyRound className="h-5 w-5" />
             </Button>
 
-            <Button
-              variant={enableA2UI ? "default" : "ghost"}
-              size="icon"
-              onClick={() => setEnableA2UI(!enableA2UI)}
-              className={`h-10 w-10 rounded-full border backdrop-blur-md transition-all duration-300 [app-region:no-drag] ${enableA2UI
-                ? "bg-white! text-black! border-white shadow-[0_0_20px_rgba(255,255,255,0.3)] scale-110"
-                : "bg-white/5 text-white/60 border-white/10 hover:bg-white/10 hover:text-white"
-                }`}
-              title={enableA2UI ? "已启用 A2UI 卡片" : "已禁用 A2UI 卡片"}
-            >
-              <Layers className="h-5 w-5" />
-            </Button>
           </div>
         </header>
 
@@ -2219,28 +2219,58 @@ Note: If you output A2UI, return ONLY the JSON without any other text.`;
               transition={{ duration: 0.2, ease: "easeOut" }}
               className="fixed bottom-24 left-1/2 z-50 w-full max-w-lg -translate-x-1/2 p-4"
             >
-              <div className="rounded-2xl border border-white/10 bg-[#19191e]/80 p-4 backdrop-blur-xl shadow-2xl shadow-black/50 relative">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setIsTextInputPinned(!isTextInputPinned)}
-                  className={`absolute top-2 right-2 h-6 w-6 rounded-full transition-colors ${isTextInputPinned ? "text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20" : "text-white/40 hover:text-white hover:bg-white/5"}`}
-                >
-                  {isTextInputPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
-                </Button>
+              <div className={`rounded-2xl border p-4 backdrop-blur-xl shadow-2xl transition-all duration-500 relative ${
+                isSubmittingText 
+                  ? "border-blue-500/40 bg-[#19191e]/95 shadow-[0_0_40px_rgba(59,130,246,0.15)] scale-[1.02]" 
+                  : "border-white/10 bg-[#19191e]/80 shadow-black/50"
+              }`}>
+                <div className="absolute top-2 right-2 flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    disabled={isSubmittingText}
+                    onClick={() => setEnableA2UI(!enableA2UI)}
+                    className={`h-6 w-6 rounded-full transition-all ${enableA2UI ? "text-blue-400 bg-blue-500/10 hover:bg-blue-500/20" : "text-white/40 hover:text-white hover:bg-white/5"}`}
+                    title={enableA2UI ? "已启用 A2UI 卡片" : "已禁用 A2UI 卡片"}
+                  >
+                    <Layers className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    disabled={isSubmittingText}
+                    onClick={() => setIsTextInputPinned(!isTextInputPinned)}
+                    className={`h-6 w-6 rounded-full transition-colors ${isTextInputPinned ? "text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20" : "text-white/40 hover:text-white hover:bg-white/5"}`}
+                  >
+                    {isTextInputPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+                  </Button>
+                </div>
                 <textarea
                   value={textInputValue}
                   onChange={(e) => setTextInputValue(e.target.value)}
                   onKeyDown={handleTextInputKeyDown}
                   onCompositionStart={() => { isComposingRef.current = true; }}
                   onCompositionEnd={() => { isComposingRef.current = false; }}
-                  placeholder="键入指令，按 Enter 直接派发给 Agent，Shift+Enter 换行..."
-                  className="w-full h-32 bg-transparent text-white placeholder-white/30 outline-none resize-none text-sm leading-relaxed"
+                  disabled={isSubmittingText}
+                  placeholder={isSubmittingText ? "正在派发任务..." : "键入指令，按 Enter 直接派发给 Agent，Shift+Enter 换行..."}
+                  className={`w-full h-32 bg-transparent text-white placeholder-white/30 outline-none resize-none text-sm leading-relaxed transition-opacity duration-300 ${isSubmittingText ? "opacity-50" : "opacity-100"}`}
                   autoFocus
                 />
+                
+                {isSubmittingText && (
+                  <div className="absolute bottom-0 left-0 h-0.5 w-full overflow-hidden rounded-b-2xl">
+                    <motion.div 
+                      className="h-full bg-blue-500"
+                      initial={{ x: "-100%" }}
+                      animate={{ x: "100%" }}
+                      transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+                    />
+                  </div>
+                )}
+
                 <div className="mt-2 flex justify-between items-center text-xs text-white/40">
-                  <span>支持 Shift + Enter 换行</span>
-                  <span>按 Enter 发送</span>
+                  <span>{isSubmittingText ? "任务处理中..." : "支持 Shift + Enter 换行"}</span>
+                  <span>{isSubmittingText ? <Loader2 className="h-3 w-3 animate-spin" /> : "按 Enter 发送"}</span>
                 </div>
               </div>
             </motion.div>
@@ -2282,7 +2312,7 @@ Note: If you output A2UI, return ONLY the JSON without any other text.`;
             setWechatLoginStatus("idle");
             setWechatQrCodeUrl(null);
             // Now start login process again
-            invoke("wechat_login"); 
+            invoke("wechat_login");
           }}
         />
 
