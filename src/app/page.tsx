@@ -2574,7 +2574,12 @@ export default function JilingPage() {
       </AnimatePresence>
       <AnimatePresence>
         {activeA2UITask && !(isSidePanelOpen && selectedTaskId === activeA2UITask.runId) && (
-          <>
+          <motion.div 
+            key={`a2ui-overlay-${activeA2UITask.runId}`}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+          >
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -2637,7 +2642,7 @@ export default function JilingPage() {
                 </div>
               </div>
             </motion.div>
-          </>
+          </motion.div>
         )}
       </AnimatePresence>
     </>
