@@ -495,6 +495,28 @@ export default function JilingPage() {
     let unlistenFn: (() => void) | null = null;
     const setup = async () => {
       const { listen } = await import("@tauri-apps/api/event");
+      const unlisten = await listen("acp-models-updated", (event: any) => {
+        const payload = event.payload as any;
+        console.log(`[ACP] Models updated for provider ${payload.provider_id}`, payload.models);
+        
+        // 如果当前选中的正是这个 Provider，刷新模型列表
+        if (payload.provider_id === selectedProviderIdRef.current) {
+          setAvailableModels(payload.models);
+          if (payload.models.length > 0 && !selectedModelRef.current) {
+             setSelectedModel(payload.models[0].id);
+          }
+        }
+      });
+      unlistenFn = unlisten;
+    };
+    setup();
+    return () => { if (unlistenFn) unlistenFn(); };
+  }, []);
+
+  useEffect(() => {
+    let unlistenFn: (() => void) | null = null;
+    const setup = async () => {
+      const { listen } = await import("@tauri-apps/api/event");
       const unlisten = await listen("wechat-event", (event: any) => {
         const payload = event.payload as any;
         if (payload.method === "qr_code_url") {

@@ -120,6 +120,7 @@ export class AcpProviderAdapter implements AgentProviderAdapter {
   async listModels(): Promise<Array<{ id: string; name: string }>> {
     try {
       return await invoke<Array<{ id: string; name: string }>>("get_acp_models", {
+        providerId: this.id,
         providerDir: this.dotDir,
       });
     } catch (e) {

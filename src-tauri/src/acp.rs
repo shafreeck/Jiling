@@ -23,7 +23,7 @@ pub struct GlobalAcpManager {
     pub db: Arc<Mutex<Db>>,
     tx_map: Arc<DashMap<String, mpsc::UnboundedSender<AcpCommand>>>,
     pending_requests: Arc<DashMap<String, PendingRequest>>,
-    current_models: Arc<DashMap<String, String>>,
+    current_models: Arc<DashMap<String, Vec<Value>>>,
 }
 
 struct PendingRequest {
@@ -81,25 +81,29 @@ impl GlobalAcpManager {
             let app_handle_clone = self.app_handle.clone();
             let provider_dir_clone = provider_dir.to_string();
             let provider_id_clone = provider_id.to_string();
+            let current_models_clone = Arc::clone(&self.current_models);
 
             tauri::async_runtime::spawn(async move {
                 loop {
-                    if let Err(e) = acp_loop(
+                    let res = acp_loop(
                         &app_handle_clone,
                         &mut rx,
                         Arc::clone(&db_clone),
                         Arc::clone(&pending_clone),
+                        Arc::clone(&current_models_clone),
                         &provider_id_clone,
                         &provider_dir_clone,
                     )
-                    .await
-                    {
+                    .await;
+
+                    if let Err(e) = res {
                         eprintln!(
                             "[ACP] error in acp_loop for provider {}: {}",
                             provider_id_clone, e
                         );
-                        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                     }
+                    
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                 }
             });
 
@@ -137,24 +141,12 @@ impl GlobalAcpManager {
     }
 
     pub async fn switch_model(&self, provider_id: String, provider_dir: String, agent_id: String, model: String) -> Result<(), String> {
-        // 只有当模型真正发生变化时才发送切换指令
-        let should_switch = {
-            let current = self.current_models.get(&provider_id);
-            match current {
-                Some(m) if m.as_str() == model => false,
-                _ => true,
-            }
-        };
-
-        if should_switch {
-            let tx = self.get_or_create_tx(&provider_id, &provider_dir).await;
-            let _ = tx.send(AcpCommand::SwitchModel {
-                agent_id,
-                model: model.clone(),
-            });
-            self.current_models.insert(provider_id, model);
-        }
-
+        // 由于现在 current_models 存储的是列表，我们需要一个单独的机制或直接发送指令
+        let tx = self.get_or_create_tx(&provider_id, &provider_dir).await;
+        let _ = tx.send(AcpCommand::SwitchModel {
+            agent_id,
+            model: model.clone(),
+        });
         Ok(())
     }
 
@@ -244,6 +236,7 @@ async fn acp_loop(
     rx: &mut mpsc::UnboundedReceiver<AcpCommand>,
     db: Arc<Mutex<Db>>,
     pending_requests: Arc<DashMap<String, PendingRequest>>,
+    current_models: Arc<DashMap<String, Vec<Value>>>,
     provider_id: &str,
     provider_dir: &str,
 ) -> Result<(), String> {
@@ -386,6 +379,16 @@ async fn acp_loop(
                     if v["type"] == "res" && v["id"] == "auth" {
                         if v["ok"] == true {
                             authenticated = true;
+                            
+                            // 认证成功后，立即请求模型列表
+                            println!("[ACP] Auth successful, requesting model list for {}", provider_id);
+                            let list_msg = json!({
+                                "type": "req",
+                                "method": "models.list",
+                                "id": "initial-models-list"
+                            });
+                            let _ = ws_write.send(Message::Text(list_msg.to_string())).await;
+
                             let db_lock = db.lock().await;
                             if let Ok(tasks) = db_lock.get_in_progress_tasks() {
                                 for (run_id, _) in tasks {
@@ -395,6 +398,70 @@ async fn acp_loop(
                                     });
                                     let _ = ws_write.send(Message::Text(wait_msg.to_string())).await;
                                 }
+                            }
+                        }
+                        continue;
+                    }
+
+                    // 处理模型列表返回
+                    if v["type"] == "res" && v["id"] == "initial-models-list" {
+                        if v["ok"] == true {
+                            if let Some(models_arr) = v["payload"]["models"].as_array() {
+                                let mut processed_models = Vec::new();
+                                for m in models_arr {
+                                    if let Some(m_id) = m["id"].as_str() {
+                                        let name = m["name"].as_str().unwrap_or(m_id);
+                                        processed_models.push(json!({
+                                            "id": m_id,
+                                            "name": name
+                                        }));
+                                    }
+                                }
+
+                                // 重要：不要直接覆盖，要与 JSON 中的模型合并
+                                let mut final_models = processed_models.clone();
+                                let mut seen_ids: std::collections::HashSet<String> = processed_models.iter()
+                                    .filter_map(|m| m["id"].as_str().map(|s| s.to_string()))
+                                    .collect();
+
+                                // 扫描 JSON 作为补全
+                                if let Ok(home) = std::env::var("HOME") {
+                                    let clean_dir = provider_dir.trim_matches('/');
+                                    let config_paths = [
+                                        format!("{}/{}/node.json", home, clean_dir),
+                                        format!("{}/{}/openclaw.json", home, clean_dir),
+                                    ];
+                                    for path in &config_paths {
+                                        if let Ok(content) = fs::read_to_string(path) {
+                                            if let Ok(config) = serde_json::from_str::<Value>(&content) {
+                                                // 扫描 providers
+                                                if let Some(providers) = config["models"]["providers"].as_object() {
+                                                    for (_, p_val) in providers {
+                                                        if let Some(p_models) = p_val["models"].as_array() {
+                                                            for m in p_models {
+                                                                if let Some(m_id) = m["id"].as_str() {
+                                                                    if seen_ids.insert(m_id.to_string()) {
+                                                                        let name = m["name"].as_str().unwrap_or(m_id);
+                                                                        final_models.push(json!({ "id": m_id, "name": name }));
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                current_models.insert(provider_id.to_string(), final_models.clone());
+                                println!("[ACP] Protocol SYNC merged with JSON. Total: {} models for {}", final_models.len(), provider_id);
+                                
+                                // 通知前端全量列表
+                                let _ = app_handle.emit("acp-models-updated", json!({
+                                    "provider_id": provider_id,
+                                    "models": final_models
+                                }));
                             }
                         }
                         continue;
@@ -734,52 +801,90 @@ pub async fn respond_agent_task_action(
 }
 
 #[tauri::command]
-pub async fn get_acp_models(provider_dir: String) -> Result<Vec<Value>, String> {
-    let home = std::env::var("HOME").map_err(|e| e.to_string())?;
-    let config_path = format!("{}/{}/openclaw.json", home, provider_dir);
+pub async fn get_acp_models(
+    provider_id: String,
+    provider_dir: String,
+    state: tauri::State<'_, Arc<GlobalAcpManager>>,
+) -> Result<Vec<Value>, String> {
     
-    let content = fs::read_to_string(config_path).map_err(|e| format!("无法读取配置文件: {}", e))?;
-    let config: Value = serde_json::from_str(&content).map_err(|e| format!("解析配置文件失败: {}", e))?;
-    
-    let mut models: Vec<Value> = Vec::new();
+    let _ = state.get_or_create_tx(&provider_id, &provider_dir).await;
+
+    let mut final_models: Vec<Value> = Vec::new();
     let mut seen_ids = std::collections::HashSet::new();
 
-    // 1. 从 agents.defaults.models 解析
-    if let Some(agent_models) = config["agents"]["defaults"]["models"].as_object() {
-        for (id, val) in agent_models {
-            let name = val["alias"].as_str().unwrap_or_else(|| {
-                id.split('/').last().unwrap_or(id)
-            });
-            if seen_ids.insert(id.clone()) {
-                models.push(json!({
-                    "id": id,
-                    "name": name
-                }));
-            }
-        }
-    }
-    
-    // 2. 同时也从 models.providers 字段解析，确保不漏掉任何模型
-    if let Some(providers) = config["models"]["providers"].as_object() {
-        for (provider_id, provider_val) in providers {
-            if let Some(provider_models) = provider_val["models"].as_array() {
-                for m in provider_models {
-                    if let Some(m_id) = m["id"].as_str() {
-                        let full_id = format!("{}/{}", provider_id, m_id);
-                        if seen_ids.insert(full_id.clone()) {
-                            let name = m["name"].as_str().unwrap_or(m_id);
-                            models.push(json!({
-                                "id": full_id,
-                                "name": name
-                            }));
-                        }
+    // 1. 优先尝试从实时缓存中读取 (ACP 协议同步的结果)
+    if let Some(acp_models) = state.current_models.get(&provider_id) {
+        if !acp_models.is_empty() {
+            println!("[ACP] ACP Cache found {} models for {}", acp_models.len(), provider_id);
+            for m in acp_models.iter() {
+                if let Some(id) = m["id"].as_str() {
+                    if seen_ids.insert(id.to_string()) {
+                        final_models.push(m.clone());
                     }
                 }
             }
+        } else {
+            println!("[ACP] ACP Cache is empty for {}", provider_id);
         }
+    } else {
+        println!("[ACP] No ACP Cache entry for {}", provider_id);
     }
 
-    Ok(models)
+    // 2. 扫描本地 JSON 文件作为补充
+    let home = std::env::var("HOME").map_err(|e| e.to_string())?;
+    let clean_dir = provider_dir.trim_matches('/');
+    let config_paths = [
+        format!("{}/{}/node.json", home, clean_dir),
+        format!("{}/{}/openclaw.json", home, clean_dir),
+    ];
+    
+    for actual_path in &config_paths {
+        println!("[ACP] Attempting to read JSON from: {}", actual_path);
+        match fs::read_to_string(actual_path) {
+            Ok(content) => {
+                println!("[ACP] Successfully read {}, size: {} bytes", actual_path, content.len());
+                match serde_json::from_str::<Value>(&content) {
+                    Ok(config) => {
+                        // 扫描 agents.defaults.models
+                        if let Some(agent_models) = config["agents"]["defaults"]["models"].as_object() {
+                            println!("[ACP] Found {} agent default models in {}", agent_models.len(), actual_path);
+                            for (id, val) in agent_models {
+                                let name = val["alias"].as_str().unwrap_or_else(|| {
+                                    id.split('/').last().unwrap_or(id)
+                                });
+                                if seen_ids.insert(id.clone()) {
+                                    final_models.push(json!({ "id": id, "name": name }));
+                                }
+                            }
+                        }
+                        
+                        // 扫描 models.providers
+                        if let Some(providers) = config["models"]["providers"].as_object() {
+                            println!("[ACP] Found {} providers in {}", providers.len(), actual_path);
+                            for (p_key, provider_val) in providers {
+                                if let Some(provider_models) = provider_val["models"].as_array() {
+                                    println!("[ACP] Provider {} has {} models", p_key, provider_models.len());
+                                    for m in provider_models {
+                                        if let Some(m_id) = m["id"].as_str() {
+                                            if seen_ids.insert(m_id.to_string()) {
+                                                let name = m["name"].as_str().unwrap_or(m_id);
+                                                final_models.push(json!({ "id": m_id, "name": name }));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    Err(e) => println!("[ACP] Failed to parse JSON from {}: {}", actual_path, e),
+                }
+            },
+            Err(e) => println!("[ACP] Failed to read file {}: {}", actual_path, e),
+        }
+    }
+    
+    println!("[ACP] Final model count for {}: {}", provider_id, final_models.len());
+    Ok(final_models)
 }
 
 #[tauri::command]
