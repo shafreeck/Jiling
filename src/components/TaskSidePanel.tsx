@@ -117,7 +117,6 @@ export function TaskSidePanel({
             className="absolute top-0 right-0 h-full border-l border-white/10 bg-black/80 backdrop-blur-2xl shadow-2xl flex flex-col overflow-hidden"
             style={{ width: `${width}px` }}
           >
-            {/* ... contents continue ... */}
             <style dangerouslySetInnerHTML={{ __html: `
               .task-side-panel ::selection {
                 background-color: rgba(59, 130, 246, 0.4) !important;
@@ -293,7 +292,7 @@ export function TaskSidePanel({
             </div>
             </div>
           </motion.div>
-        </>
+        </motion.div>
       )}
     </AnimatePresence>
   );
