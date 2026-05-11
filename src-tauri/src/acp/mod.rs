@@ -96,3 +96,43 @@ pub async fn update_agent_task_output(
 ) -> Result<(), String> {
     state.update_task_output(run_id, output).await
 }
+
+#[tauri::command]
+pub async fn read_acp_config(provider_id: String) -> Result<Value, String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let config_dir = match provider_id.as_str() {
+        "openclaw" => ".openclaw",
+        "autoclaw" => ".openclaw-autoclaw",
+        "hermes" => ".hermes",
+        _ => return Err(format!("Unknown provider: {}", provider_id)),
+    };
+    
+    let path = std::path::Path::new(&home).join(config_dir).join("openclaw.json");
+    if !path.exists() {
+        // Try node.json as fallback
+        let node_path = std::path::Path::new(&home).join(config_dir).join("node.json");
+        if !node_path.exists() {
+            return Ok(json!({}));
+        }
+        let text = std::fs::read_to_string(node_path).map_err(|e| e.to_string())?;
+        return serde_json::from_str(&text).map_err(|e| e.to_string());
+    }
+    
+    let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    serde_json::from_str(&text).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn write_acp_config(provider_id: String, config: Value) -> Result<(), String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let config_dir = match provider_id.as_str() {
+        "openclaw" => ".openclaw",
+        "autoclaw" => ".openclaw-autoclaw",
+        "hermes" => ".hermes",
+        _ => return Err(format!("Unknown provider: {}", provider_id)),
+    };
+    
+    let path = std::path::Path::new(&home).join(config_dir).join("openclaw.json");
+    let text = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
+    std::fs::write(path, text).map_err(|e| e.to_string())
+}

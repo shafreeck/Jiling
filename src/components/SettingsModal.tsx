@@ -22,6 +22,8 @@ import { useEffect, useState, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
+import { ProviderConfigModal } from "./ProviderConfigModal";
+
 interface ProviderInfo {
   id: string;
   name: string;
@@ -53,6 +55,7 @@ export function SettingsModal({
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [identity, setIdentity] = useState<{ device_id?: string; public_key?: string } | null>(null);
   const [loadingProviders, setLoadingProviders] = useState(false);
+  const [selectedProviderConfigId, setSelectedProviderConfigId] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -139,22 +142,7 @@ export function SettingsModal({
   };
 
   const handleConfigureProvider = async (id: string) => {
-    try {
-      const { homeDir, join } = await import("@tauri-apps/api/path");
-      const home = await homeDir();
-      
-      const configMap: Record<string, string> = {
-        "openclaw": ".openclaw",
-        "autoclaw": ".openclaw-autoclaw",
-        "hermes": ".hermes"
-      };
-      
-      const dir = configMap[id] || `.openclaw-${id}`;
-      const path = await join(home, dir);
-      await invoke("open_path", { path });
-    } catch (e) {
-      console.error("Failed to open config directory:", e);
-    }
+    setSelectedProviderConfigId(id);
   };
 
   return (
@@ -436,6 +424,14 @@ export function SettingsModal({
             </div>
           </motion.div>
         </div>
+      )}
+      {selectedProviderConfigId && (
+        <ProviderConfigModal 
+          isOpen={!!selectedProviderConfigId}
+          onClose={() => setSelectedProviderConfigId(null)}
+          providerId={selectedProviderConfigId}
+          providerName={providers.find(p => p.id === selectedProviderConfigId)?.name || ""}
+        />
       )}
     </AnimatePresence>
   );

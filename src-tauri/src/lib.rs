@@ -62,7 +62,9 @@ pub fn run() {
             commands::set_api_key,
             acp::get_device_identity,
             commands::capture_screen,
-            commands::open_path
+            commands::open_path,
+            acp::read_acp_config,
+            acp::write_acp_config
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
