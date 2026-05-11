@@ -12,7 +12,6 @@ import {
   CircleStop,
   Clock,
   Eraser,
-  KeyRound,
   ListChecks,
   Mic,
   Minimize2,
@@ -36,6 +35,7 @@ import {
   Pin,
   PinOff,
   Cpu,
+  Settings,
 } from "lucide-react";
 import { AuraRenderer } from "@/components/AuraRenderer";
 import { motion, AnimatePresence } from "framer-motion";
@@ -59,6 +59,7 @@ import { ControlBar } from "@/components/ControlBar";
 import { TaskSidePanel } from "@/components/TaskSidePanel";
 import { TaskOutputOverlay } from "@/components/TaskOutputOverlay";
 import { WechatLoginModal } from "@/components/WechatLoginModal";
+import { SettingsModal } from "@/components/SettingsModal";
 
 type VoiceStatus = "idle" | "listening" | "thinking" | "speaking";
 type ToolCall = NonNullable<LiveMessage["toolCall"]>;
@@ -636,7 +637,6 @@ export default function JilingPage() {
   const activeTask = useMemo(() => {
     return agentTasks.find((task) => task.runId === selectedTaskId) || agentTasks[0];
   }, [agentTasks, selectedTaskId]);
-  const [apiKeyInput, setApiKeyInput] = useState("");
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
 
@@ -1105,19 +1105,19 @@ export default function JilingPage() {
     return status;
   };
 
-  const saveApiKey = async () => {
+  const saveApiKey = async (apiKey: string) => {
     setIsSavingSettings(true);
     setSettingsError(null);
 
     try {
-      await invoke("set_api_key", { apiKey: apiKeyInput });
+      await invoke("set_api_key", { apiKey });
       GeminiLiveClient.resetApiClient();
       const status = await refreshApiKeyStatus();
-      setApiKeyInput("");
       setShowSettings(false);
       addLog(status.configured ? "[设置] Gemini API Key 已保存" : "[设置] Gemini API Key 已清除");
     } catch (error: unknown) {
       setSettingsError(errorMessage(error));
+      throw error;
     } finally {
       setIsSavingSettings(false);
     }
@@ -1882,12 +1882,14 @@ export default function JilingPage() {
       // 将原任务重新置为 running 状态，视觉上继续执行
       updateTask(runId, { phase: "running" });
 
-      await invoke("respond_agent_task_action", {
-        agentId: task.providerName,
-        runId,
-        requestId,
-        action,
-        data: feedbackData
+      const taskView = agentTasks.find(t => t.runId === runId);
+      await invoke("execute_agent_acp_task", {
+        providerId: taskView?.providerName || selectedProviderId,
+        agent: "main", 
+        task: message,
+        systemInstruction: "",
+        attachments: [],
+        silent: true
       });
 
       addLog(`[A2UI] 审批结果已沿用原链路下发: ${action === "approve" ? "允许" : "拒绝"} (Task: ${runId})`);
@@ -2174,20 +2176,20 @@ export default function JilingPage() {
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5">
               <label className="relative">
-                <Sparkles className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/40" />
+                <Sparkles className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/50" />
                 <select
                   disabled={isBusy || isConnected}
                   value={selectedVoice}
                   onChange={(e) => setSelectedVoice(e.target.value)}
-                  className="h-9 w-36 appearance-none rounded-full border border-white/10 bg-white/5 pl-9 pr-8 text-xs text-white/60 outline-none backdrop-blur-xl transition hover:bg-white/10 focus:border-primary/50 disabled:opacity-50 [app-region:no-drag]"
+                  className="h-9 w-36 appearance-none rounded-full border border-white/10 bg-white/5 pl-9 pr-8 text-xs text-white/80 outline-none backdrop-blur-xl transition hover:bg-white/15 hover:border-white/20 focus:border-primary/50 disabled:opacity-50 [app-region:no-drag]"
                 >
                   {VOICES.map(v => <option key={v.id} value={v.id} className="bg-[#1a1a1a] font-sans">{v.name}</option>)}
                 </select>
-                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-white/30" />
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-white/40" />
               </label>
 
               <label className="relative">
-                <Languages className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/40" />
+                <Languages className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/50" />
                 <select
                   disabled={isBusy || isConnected}
                   value={selectedLanguage}
@@ -2195,7 +2197,7 @@ export default function JilingPage() {
                     setSelectedLanguage(e.target.value);
                     localStorage.setItem("jiling_selected_language", e.target.value);
                   }}
-                  className="h-9 w-28 appearance-none rounded-full border border-white/10 bg-white/5 pl-9 pr-8 text-xs text-white/60 outline-none backdrop-blur-xl transition hover:bg-white/10 focus:border-primary/50 disabled:opacity-50 [app-region:no-drag]"
+                  className="h-9 w-28 appearance-none rounded-full border border-white/10 bg-white/5 pl-9 pr-8 text-xs text-white/80 outline-none backdrop-blur-xl transition hover:bg-white/15 hover:border-white/20 focus:border-primary/50 disabled:opacity-50 [app-region:no-drag]"
                 >
                   <option value="auto" className="bg-[#1a1a1a]">Auto</option>
                   <option value="zh-CN" className="bg-[#1a1a1a]">中文</option>
@@ -2208,7 +2210,7 @@ export default function JilingPage() {
                   <option value="pt-BR" className="bg-[#1a1a1a]">Português</option>
                   <option value="it-IT" className="bg-[#1a1a1a]">Italiano</option>
                 </select>
-                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-white/30" />
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-white/40" />
               </label>
 
               {providers.length > 0 && (
@@ -2217,31 +2219,31 @@ export default function JilingPage() {
                     {isOnline ? (
                       <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)] animate-pulse z-10" />
                     ) : (
-                      <Bot className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/40 z-10" />
+                      <Bot className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/50 z-10" />
                     )}
                     <select
                       disabled={isBusy || isConnected}
                       value={selectedProviderId}
                       onChange={(e) => setSelectedProviderId(e.target.value)}
-                      className="h-9 w-32 appearance-none rounded-full border border-white/10 bg-white/5 pl-9 pr-8 text-xs text-white/60 outline-none backdrop-blur-xl transition hover:bg-white/10 focus:border-primary/50 disabled:opacity-50 [app-region:no-drag]"
+                      className="h-9 w-32 appearance-none rounded-full border border-white/10 bg-white/5 pl-9 pr-8 text-xs text-white/80 outline-none backdrop-blur-xl transition hover:bg-white/15 hover:border-white/20 focus:border-primary/50 disabled:opacity-50 [app-region:no-drag]"
                     >
                       {providers.map(p => <option key={p.id} value={p.id} className="bg-[#1a1a1a]">{providerLabel(p.id, p.name)}</option>)}
                     </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-white/30" />
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-white/40" />
                   </label>
 
                   {availableModels.length > 0 && (
                     <label className="relative">
-                      <Cpu className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/40 z-10" />
+                      <Cpu className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/50 z-10" />
                       <select
                         disabled={isBusy || isConnected}
                         value={selectedModel || ""}
                         onChange={(e) => handleModelChange(e.target.value)}
-                        className="h-9 min-w-[120px] appearance-none rounded-full border border-white/10 bg-white/5 pl-9 pr-8 text-xs text-white/60 outline-none backdrop-blur-xl transition hover:bg-white/10 focus:border-primary/50 disabled:opacity-50 [app-region:no-drag]"
+                        className="h-9 min-w-[120px] appearance-none rounded-full border border-white/10 bg-white/5 pl-9 pr-8 text-xs text-white/80 outline-none backdrop-blur-xl transition hover:bg-white/15 hover:border-white/20 focus:border-primary/50 disabled:opacity-50 [app-region:no-drag]"
                       >
                         {availableModels.map(m => <option key={m.id} value={m.id} className="bg-[#1a1a1a] font-sans">{m.name}</option>)}
                       </select>
-                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-white/30" />
+                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-white/40" />
                     </label>
                   )}
 
@@ -2254,7 +2256,7 @@ export default function JilingPage() {
                             size="icon"
                             disabled={isBusy || isConnected}
                             onClick={clearSessionHandle}
-                            className="h-9 w-9 rounded-full bg-white/5 text-white/30 hover:bg-destructive/10 hover:text-destructive transition-colors [app-region:no-drag]"
+                            className="h-9 w-9 rounded-full bg-white/5 text-white/50 hover:bg-destructive/15 hover:text-destructive transition-colors [app-region:no-drag] border border-transparent hover:border-destructive/20"
                           >
                             <Eraser className="h-3.5 w-3.5" />
                           </Button>
@@ -2354,9 +2356,9 @@ export default function JilingPage() {
               variant="ghost"
               size="icon"
               onClick={() => setShowSettings(true)}
-              className="h-10 w-10 rounded-full border border-white/10 bg-white/5 backdrop-blur-md text-white/60 hover:bg-white/10 hover:text-white transition-all [app-region:no-drag]"
+              className="h-10 w-10 rounded-full border border-white/10 bg-white/5 backdrop-blur-md text-white/70 hover:bg-white/15 hover:text-white transition-all [app-region:no-drag] hover:border-white/20"
             >
-              <KeyRound className="h-5 w-5" />
+              <Settings className="h-5 w-5" />
             </Button>
 
           </div>
@@ -2515,62 +2517,14 @@ export default function JilingPage() {
       )}
 
       <AnimatePresence>
-        {showSettings && (
-          <div className="fixed inset-0 z-500 flex items-center justify-center bg-black/60 backdrop-blur-md">
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="glass-panel w-full max-w-md rounded-3xl p-8"
-              style={{ zIndex: 800 }}
-            >
-              <div className="mb-6 flex items-center justify-between">
-                <h2 className="text-xl font-bold text-white">应用设置</h2>
-                <Button variant="ghost" size="icon" onClick={() => setShowSettings(false)} className="rounded-full text-white/60 hover:text-white hover:bg-white/10 transition-colors">
-                  <X className="h-5 w-5" />
-                </Button>
-              </div>
-
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-white/80">Gemini API Key</label>
-                  <input
-                    type="password"
-                    value={apiKeyInput}
-                    onChange={(e) => setApiKeyInput(e.target.value)}
-                    placeholder={apiKeyConfigured ? "已配置 (留空保留当前密钥)" : "输入你的 Gemini API Key"}
-                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm outline-none transition focus:border-primary/50 focus:bg-white/10 placeholder:text-white/40"
-                  />
-                  {settingsError && (
-                    <div className="mt-2 p-4 rounded-xl bg-white/3 border border-white/5 text-[11px] text-white/50 leading-relaxed italic whitespace-pre-wrap wrap-break-word overflow-hidden">
-                      <p className="text-xs text-destructive">{settingsError}</p>
-                    </div>
-                  )}
-                </div>
-
-
-
-                <div className="flex gap-3 pt-4">
-                  <Button
-                    className="flex-1 rounded-xl h-12 bg-emerald-500 text-black hover:bg-emerald-400 font-bold transition-all shadow-[0_0_15px_rgba(16,185,129,0.2)]"
-                    onClick={saveApiKey}
-                    disabled={isSavingSettings}
-                  >
-                    {isSavingSettings ? "正在保存..." : "保存设置"}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="flex-1 rounded-xl h-12 border-white/10 bg-white/5 text-white hover:bg-white/10 hover:border-white/20 transition-all"
-                    onClick={runSelfTest}
-                    disabled={isBusy}
-                  >
-                    运行自检
-                  </Button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
+        <SettingsModal
+          isOpen={showSettings}
+          onClose={() => setShowSettings(false)}
+          apiKeyConfigured={!!apiKeyConfigured}
+          apiKeySource={apiKeySource}
+          onSaveApiKey={saveApiKey}
+          onRunSelfTest={runSelfTest}
+        />
       </AnimatePresence>
 
       {/* Progressive Log Area - Outside main */}

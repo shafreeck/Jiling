@@ -31,7 +31,7 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
-            let manager = std::sync::Arc::new(acp::GlobalAcpManager::new(app.handle().clone()));
+            let manager = acp::GlobalAcpManager::new(app.handle().clone());
             let wechat_manager = std::sync::Arc::new(wechat::WechatManager::new(app.handle().clone()));
             
             // Reconcile tasks on startup to clear zombie entries
@@ -50,7 +50,6 @@ pub fn run() {
             acp::get_task_output,
             acp::get_agent_task_status,
             acp::list_agent_tasks,
-            acp::respond_agent_task_action,
             acp::update_agent_task_output,
             acp::get_acp_models,
             acp::switch_agent_model,
@@ -61,6 +60,7 @@ pub fn run() {
             commands::get_api_key,
             commands::get_api_key_status,
             commands::set_api_key,
+            acp::get_device_identity,
             commands::capture_screen
         ])
         .run(tauri::generate_context!())
