@@ -150,6 +150,7 @@ export function SettingsModal({
       {isOpen && (
         <div key="settings-backdrop" className="fixed inset-0 z-500 flex items-center justify-center p-4">
           <motion.div
+            key="settings-overlay"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -350,8 +351,8 @@ export function SettingsModal({
                                 
                                 {p.models.length > 0 && (
                                   <div className="mt-4 flex flex-wrap gap-2">
-                                    {p.models.slice(0, 5).map(m => (
-                                      <span key={m.id || m.name} className="rounded-lg bg-white/5 px-2 py-1 text-[10px] text-white/60 border border-white/5">
+                                    {p.models.slice(0, 5).map((m, idx) => (
+                                      <span key={m.id || m.name || `model-${idx}`} className="rounded-lg bg-white/5 px-2 py-1 text-[10px] text-white/60 border border-white/5">
                                         {m.name}
                                       </span>
                                     ))}

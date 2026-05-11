@@ -2095,7 +2095,7 @@ export default function JilingPage() {
         }
       ` }} />
       <main className="relative h-screen w-full overflow-hidden bg-black text-white">
-        <AnimatePresence>
+        <AnimatePresence key="aura-ap">
           {status !== "idle" && (
             <motion.div
               key="aura-background"
@@ -2119,7 +2119,7 @@ export default function JilingPage() {
           )}
         </AnimatePresence>
 
-        <AnimatePresence>
+        <AnimatePresence key="toast-ap">
           {toast && (
             <motion.div
               key="toast-message"
@@ -2185,7 +2185,7 @@ export default function JilingPage() {
                   onChange={(e) => setSelectedVoice(e.target.value)}
                   className="h-9 w-36 appearance-none rounded-full border border-white/10 bg-white/5 pl-9 pr-8 text-xs text-white/80 outline-none backdrop-blur-xl transition hover:bg-white/15 hover:border-white/20 focus:border-primary/50 disabled:opacity-50 [app-region:no-drag]"
                 >
-                  {VOICES.map(v => <option key={v.id} value={v.id} className="bg-[#1a1a1a] font-sans">{v.name}</option>)}
+                  {VOICES.map((v, idx) => <option key={v.id || idx} value={v.id} className="bg-[#1a1a1a] font-sans">{v.name}</option>)}
                 </select>
                 <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-white/40" />
               </label>
@@ -2229,7 +2229,7 @@ export default function JilingPage() {
                       onChange={(e) => setSelectedProviderId(e.target.value)}
                       className="h-9 w-32 appearance-none rounded-full border border-white/10 bg-white/5 pl-9 pr-8 text-xs text-white/80 outline-none backdrop-blur-xl transition hover:bg-white/15 hover:border-white/20 focus:border-primary/50 disabled:opacity-50 [app-region:no-drag]"
                     >
-                      {providers.map(p => <option key={p.id} value={p.id} className="bg-[#1a1a1a]">{providerLabel(p.id, p.name)}</option>)}
+                      {providers.map((p, idx) => <option key={p.id || idx} value={p.id} className="bg-[#1a1a1a]">{providerLabel(p.id, p.name)}</option>)}
                     </select>
                     <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-white/40" />
                   </label>
@@ -2243,7 +2243,7 @@ export default function JilingPage() {
                         onChange={(e) => handleModelChange(e.target.value)}
                         className="h-9 min-w-[120px] appearance-none rounded-full border border-white/10 bg-white/5 pl-9 pr-8 text-xs text-white/80 outline-none backdrop-blur-xl transition hover:bg-white/15 hover:border-white/20 focus:border-primary/50 disabled:opacity-50 [app-region:no-drag]"
                       >
-                        {availableModels.map(m => <option key={m.id} value={m.id} className="bg-[#1a1a1a] font-sans">{m.name}</option>)}
+                        {availableModels.map((m, idx) => <option key={m.id || idx} value={m.id} className="bg-[#1a1a1a] font-sans">{m.name}</option>)}
                       </select>
                       <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-white/40" />
                     </label>
@@ -2366,7 +2366,7 @@ export default function JilingPage() {
           </div>
         </header>
 
-        <AnimatePresence>
+        <AnimatePresence key="text-input-ap">
           {showTextInput && (
             <motion.div
               key="text-input-field"
@@ -2519,7 +2519,7 @@ export default function JilingPage() {
         </div>
       )}
 
-      <AnimatePresence>
+      <AnimatePresence key="settings-modal-ap">
         {showSettings && (
           <SettingsModal
             key="settings-modal"
@@ -2534,7 +2534,7 @@ export default function JilingPage() {
       </AnimatePresence>
 
       {/* Progressive Log Area - Outside main */}
-      <AnimatePresence>
+      <AnimatePresence key="system-logs-ap">
         {showLogs && (
           <motion.div
             key="system-logs"
@@ -2579,24 +2579,25 @@ export default function JilingPage() {
           </motion.div>
         )}
       </AnimatePresence>
-      <AnimatePresence>
+      <AnimatePresence key="a2ui-overlay-ap">
         {activeA2UITask && !(isSidePanelOpen && selectedTaskId === activeA2UITask.runId) && (
           <motion.div 
-            key={`a2ui-overlay-${activeA2UITask.runId}`}
-            initial="initial"
-            animate="animate"
-            exit="exit"
+            key={`a2ui-overlay-container-${activeA2UITask.runId}`}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-2999"
           >
             <motion.div
+              key={`a2ui-backdrop-${activeA2UITask.runId}`}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-2999"
-              onClick={() => {
-                // Optional: dismiss or do nothing
-              }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => {}}
             />
             <motion.div
+              key={`a2ui-content-${activeA2UITask.runId}`}
               initial={{ opacity: 0, y: -50, scale: 0.9 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -50, scale: 0.9 }}

@@ -121,9 +121,9 @@ const TaskListCard = (props: TaskListCardProps) => {
 
             {/* Task List Body */}
             <div style={{ padding: '0 12px 12px' }}>
-                {tasks.map((task) => (
+                {tasks.map((task, idx) => (
                     <div
-                        key={task.id}
+                        key={task.id || idx}
                         onClick={() => toggleTask(task.id)}
                         style={{
                             display: 'flex',

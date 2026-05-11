@@ -96,27 +96,28 @@ export function TaskSidePanel({
   return (
     <AnimatePresence>
       {isOpen && (
-        <>
+        <motion.div
+          key="task-side-panel-wrapper"
+          className="fixed inset-0 z-1000"
+        >
           <motion.div
+            key="task-panel-overlay"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-black/40 backdrop-blur-sm"
-            style={{ zIndex: 999 }}
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
           />
           <motion.div
+            key="task-panel-content"
             initial={{ right: -width }}
             animate={{ right: 0 }}
             exit={{ right: -width }}
             transition={{ type: "spring", damping: 30, stiffness: 300 }}
-            className="fixed top-0 h-full border-l border-white/10 bg-black/80 backdrop-blur-2xl shadow-2xl flex flex-col overflow-hidden"
-            style={{ 
-              zIndex: 1000, 
-              width: `${width}px`,
-              right: 0
-            }}
+            className="absolute top-0 right-0 h-full border-l border-white/10 bg-black/80 backdrop-blur-2xl shadow-2xl flex flex-col overflow-hidden"
+            style={{ width: `${width}px` }}
           >
+            {/* ... contents continue ... */}
             <style dangerouslySetInnerHTML={{ __html: `
               .task-side-panel ::selection {
                 background-color: rgba(59, 130, 246, 0.4) !important;
