@@ -138,6 +138,26 @@ export function SettingsModal({
     }
   };
 
+  const handleConfigureProvider = async (id: string) => {
+    try {
+      const { open } = await import("@tauri-apps/plugin-shell");
+      const { homeDir, join } = await import("@tauri-apps/api/path");
+      const home = await homeDir();
+      
+      const configMap: Record<string, string> = {
+        "openclaw": ".openclaw",
+        "autoclaw": ".openclaw-autoclaw",
+        "hermes": ".hermes"
+      };
+      
+      const dir = configMap[id] || `.openclaw-${id}`;
+      const path = await join(home, dir);
+      await open(path);
+    } catch (e) {
+      console.error("Failed to open config directory:", e);
+    }
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -321,10 +341,7 @@ export function SettingsModal({
                                       <Button 
                                         variant="ghost" 
                                         size="sm" 
-                                        onClick={() => {
-                                          // TODO: Open detailed config
-                                          console.log("Configure provider:", p.id);
-                                        }}
+                                        onClick={() => handleConfigureProvider(p.id)}
                                         className="h-8 rounded-lg text-[11px] text-white/70 hover:text-white hover:bg-white/15 border border-white/5 hover:border-white/20 transition-all px-4"
                                       >
                                         配置
