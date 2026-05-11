@@ -140,7 +140,6 @@ export function SettingsModal({
 
   const handleConfigureProvider = async (id: string) => {
     try {
-      const { open } = await import("@tauri-apps/plugin-shell");
       const { homeDir, join } = await import("@tauri-apps/api/path");
       const home = await homeDir();
       
@@ -152,7 +151,7 @@ export function SettingsModal({
       
       const dir = configMap[id] || `.openclaw-${id}`;
       const path = await join(home, dir);
-      await open(path);
+      await invoke("open_path", { path });
     } catch (e) {
       console.error("Failed to open config directory:", e);
     }

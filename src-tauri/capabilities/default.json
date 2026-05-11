@@ -42,6 +42,14 @@
         { "path": "$HOME/.hermes" },
         { "path": "$HOME/.hermes/**" }
       ]
+    },
+    {
+      "identifier": "shell:allow-open",
+      "allow": [
+        { "path": "$HOME/.openclaw" },
+        { "path": "$HOME/.openclaw-autoclaw" },
+        { "path": "$HOME/.hermes" }
+      ]
     }
   ]
 }
