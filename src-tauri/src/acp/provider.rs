@@ -206,12 +206,22 @@ impl ProviderRunner {
                 .or(payload["runId"].as_str())
                 .unwrap_or("");
             
-            // 持久化 assistant 输出
+            // 持久化 assistant 输出，需要识别增量 vs 全量快照
             if stream == "assistant" {
                 if let Some(text) = payload["data"]["text"].as_str() {
                     let db = self.db.lock().await;
                     let current = db.get_task_output(run_id).unwrap_or_default();
-                    let _ = db.set_task_output(run_id, &(current + text));
+                    
+                    // 启发式识别：如果新到的文本以已有内容开头且更长，视为全量快照
+                    if !current.is_empty() && text.len() > current.len() && text.starts_with(&current) {
+                        let _ = db.set_task_output(run_id, text);
+                    } else if !current.is_empty() && text.len() > current.len() && text.trim().starts_with(current.trim()) {
+                        // 处理带空白字符差异的快照
+                        let _ = db.set_task_output(run_id, text);
+                    } else {
+                        // 视为增量拼接
+                        let _ = db.set_task_output(run_id, &(current + text));
+                    }
                 }
             }
 

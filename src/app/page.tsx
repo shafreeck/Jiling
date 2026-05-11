@@ -909,7 +909,7 @@ export default function JilingPage() {
           appendTaskProgress(taskRef.runId, e.text);
         },
         onOutputUpdate: (e) => {
-          appendTaskOutput(taskRef.runId, e.output);
+          appendTaskOutput(taskRef.runId, e.output, e.incremental);
         },
         onCompleted: (e) => {
           let outputText = formatTaskOutput(e.output);
@@ -1216,17 +1216,30 @@ export default function JilingPage() {
     );
   };
 
-  const appendTaskOutput = (runId: string, text: string) => {
+  const appendTaskOutput = (runId: string, text: string, incremental?: boolean) => {
     setAgentTasks((prev) =>
       prev.map((t) => {
         if (t.runId !== runId) return t;
 
         let newOutput = t.output || "";
-        // 如果新到的文本包含了已有的内容（说明是快照模式），则直接替换
-        if (text.length > newOutput.length && text.startsWith(newOutput)) {
+        
+        // 如果显式指定为非增量，或者是快照模式（startsWith），则替换
+        // 注意：有些 provider 可能会在文本开头添加微小的空白差异，导致 startsWith 失败
+        const cleanNew = text.trim();
+        const cleanOld = newOutput.trim();
+
+        if (incremental === false) {
           newOutput = text;
+        } else if (text.length > newOutput.length && text.startsWith(newOutput)) {
+          newOutput = text;
+        } else if (cleanNew.length > cleanOld.length && cleanNew.startsWith(cleanOld)) {
+          // 归一化后的匹配，有效处理换行/空格差异引起的快照识别失败
+          newOutput = text;
+        } else if (newOutput.length >= text.length && (newOutput.startsWith(text) || cleanOld.startsWith(cleanNew))) {
+          // 如果新文本是已有内容的子集（过时快照），则忽略
+          return t;
         } else {
-          // 否则按增量拼接
+          // 增量拼接
           newOutput += text;
         }
 
