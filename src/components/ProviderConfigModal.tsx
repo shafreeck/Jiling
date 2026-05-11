@@ -190,7 +190,7 @@ export function ProviderConfigModal({
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     {Object.entries(config?.plugins?.entries || {}).map(([id, p]: [string, any]) => (
-                      <div key={id} className="flex items-center justify-between rounded-2xl border border-white/5 bg-white/2 p-3.5 transition-colors hover:bg-white/3">
+                      <div key={id || `plugin-${p.name || ""}`} className="flex items-center justify-between rounded-2xl border border-white/5 bg-white/2 p-3.5 transition-colors hover:bg-white/3">
                         <div className="flex flex-col gap-0.5">
                           <span className="text-[13px] font-medium text-white/90">{id}</span>
                           <span className="text-[10px] text-white/30 uppercase">Plugin</span>
@@ -212,7 +212,7 @@ export function ProviderConfigModal({
                   </div>
                   <div className="space-y-3">
                     {Object.entries(config?.agents?.defaults?.models || {}).map(([id, m]: [string, any]) => (
-                      <div key={id} className="flex items-center gap-4 rounded-2xl border border-white/5 bg-white/2 p-3.5">
+                      <div key={id || `model-${m.alias || ""}`} className="flex items-center gap-4 rounded-2xl border border-white/5 bg-white/2 p-3.5">
                          <div className="flex-1 min-w-0">
                             <p className="text-[10px] text-white/20 truncate">{id}</p>
                             <input 

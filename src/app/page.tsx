@@ -2098,6 +2098,7 @@ export default function JilingPage() {
         <AnimatePresence>
           {status !== "idle" && (
             <motion.div
+              key="aura-background"
               initial={{ opacity: 0 }}
               animate={{
                 opacity: status === "speaking" ? 0.3 + (volume * 0.7) : 0.2,
@@ -2121,6 +2122,7 @@ export default function JilingPage() {
         <AnimatePresence>
           {toast && (
             <motion.div
+              key="toast-message"
               initial={{ y: 50, opacity: 0, x: "-50%" }}
               animate={{ y: -90, opacity: 1, x: "-50%" }}
               exit={{ y: 50, opacity: 0, x: "-50%" }}
@@ -2367,6 +2369,7 @@ export default function JilingPage() {
         <AnimatePresence>
           {showTextInput && (
             <motion.div
+              key="text-input-field"
               ref={textInputRef}
               initial={{ opacity: 0, y: 20, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -2517,20 +2520,24 @@ export default function JilingPage() {
       )}
 
       <AnimatePresence>
-        <SettingsModal
-          isOpen={showSettings}
-          onClose={() => setShowSettings(false)}
-          apiKeyConfigured={!!apiKeyConfigured}
-          apiKeySource={apiKeySource}
-          onSaveApiKey={saveApiKey}
-          onRunSelfTest={runSelfTest}
-        />
+        {showSettings && (
+          <SettingsModal
+            key="settings-modal"
+            isOpen={showSettings}
+            onClose={() => setShowSettings(false)}
+            apiKeyConfigured={!!apiKeyConfigured}
+            apiKeySource={apiKeySource}
+            onSaveApiKey={saveApiKey}
+            onRunSelfTest={runSelfTest}
+          />
+        )}
       </AnimatePresence>
 
       {/* Progressive Log Area - Outside main */}
       <AnimatePresence>
         {showLogs && (
           <motion.div
+            key="system-logs"
             initial={{ opacity: 0, x: 50 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 50 }}

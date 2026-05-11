@@ -351,7 +351,7 @@ export function SettingsModal({
                                 {p.models.length > 0 && (
                                   <div className="mt-4 flex flex-wrap gap-2">
                                     {p.models.slice(0, 5).map(m => (
-                                      <span key={m.id} className="rounded-lg bg-white/5 px-2 py-1 text-[10px] text-white/60 border border-white/5">
+                                      <span key={m.id || m.name} className="rounded-lg bg-white/5 px-2 py-1 text-[10px] text-white/60 border border-white/5">
                                         {m.name}
                                       </span>
                                     ))}
